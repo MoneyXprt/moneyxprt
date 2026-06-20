@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
 
 // Prevent Next.js from statically pre-rendering this dynamic API route at build time.
 export const dynamic = 'force-dynamic';
 
 // Lazy singleton — avoids build-time failures when env vars aren't present.
-let _anthropic: Anthropic | null = null;
-function getAnthropic(): Anthropic {
-  if (!_anthropic) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
     }
-    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
-  return _anthropic;
+  return _openai;
 }
 
 /**
@@ -97,14 +97,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Claude parse ──────────────────────────────────────────────────────────
+    // ── OpenAI parse ──────────────────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
 
-    const message = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5',
+    const completion = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o-mini',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
+      response_format: { type: 'json_object' },
       messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
           content: `Today's date is ${today}.\n\nVoice log:\n${rawLog.trim()}`,
@@ -112,17 +113,17 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const rawContent = message.content[0];
-    if (rawContent.type !== 'text') {
+    const rawText = completion.choices[0]?.message?.content;
+    if (!rawText) {
       return NextResponse.json({ error: 'Unexpected response from AI parser' }, { status: 502 });
     }
 
     let parsed: ParsedLog;
     try {
-      parsed = JSON.parse(rawContent.text) as ParsedLog;
+      parsed = JSON.parse(rawText) as ParsedLog;
     } catch {
       return NextResponse.json(
-        { error: 'AI parser returned invalid JSON', raw: rawContent.text },
+        { error: 'AI parser returned invalid JSON', raw: rawText },
         { status: 502 },
       );
     }
