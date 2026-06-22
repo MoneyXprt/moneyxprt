@@ -75,21 +75,31 @@ export const soloK: Strategy = {
       };
     }
 
-    // ── Compute the employer profit-sharing contribution (the incremental value) ─
-    // Net SE earnings ≈ gross × SE_TAX_DEDUCTIBLE_FRACTION (accounts for ½ SE-tax deduction)
-    const netSEEarnings           = selfEmploymentIncome * SE_TAX_DEDUCTIBLE_FRACTION;
-    const employerContribution    = Math.min(
+    // ── Correct contribution calculation ─────────────────────────────────────
+    // Net SE earnings = gross × SE_TAX_DEDUCTIBLE_FRACTION (½ SE-tax deduction)
+    const netSEEarnings = selfEmploymentIncome * SE_TAX_DEDUCTIBLE_FRACTION;
+
+    // Employee elective deferral: capped at the lesser of the statutory limit
+    // OR net earnings — you cannot defer more than you actually earned.
+    const employeeDeferral = Math.min(CONTRIBUTION_LIMITS.k401, netSEEarnings);
+
+    // Employer profit-sharing: 25% of net SE earnings, capped so the combined
+    // total stays within the §415 annual additions limit.
+    const employerContribution = Math.min(
       netSEEarnings * EMPLOYER_CONTRIBUTION_RATE,
-      CONTRIBUTION_LIMITS.sepIraMax - CONTRIBUTION_LIMITS.k401,  // headroom above employee deferral
+      CONTRIBUTION_LIMITS.sepIraMax - employeeDeferral,
     );
-    const totalAllowable          = Math.min(
-      CONTRIBUTION_LIMITS.k401 + employerContribution,
-      CONTRIBUTION_LIMITS.sepIraMax,
+
+    // Total contribution: employee + employer, but cannot exceed net earnings
+    // (you cannot put in more than you made).
+    const totalContribution = Math.min(
+      employeeDeferral + employerContribution,
+      netSEEarnings,
     );
 
     const taxableIncome        = getTaxableIncome(s);
     const combinedMarginalRate = getMarginalRate(taxableIncome, s.filingStatus, s.state);
-    const estimatedAnnualValue = Math.round(totalAllowable * combinedMarginalRate);
+    const estimatedAnnualValue = Math.round(totalContribution * combinedMarginalRate);
 
     const incomeSource = s.income1099 > 0 && s.businessRevenue > 0
       ? `1099 income ($${s.income1099.toLocaleString()}) and business revenue ($${s.businessRevenue.toLocaleString()})`
@@ -97,23 +107,27 @@ export const soloK: Strategy = {
         ? `1099 income ($${s.income1099.toLocaleString()})`
         : `business revenue ($${s.businessRevenue.toLocaleString()})`;
 
+    const deferralNote = employeeDeferral < CONTRIBUTION_LIMITS.k401
+      ? `$${Math.round(employeeDeferral).toLocaleString()} employee deferral ` +
+        `(capped at net earnings — below the $${CONTRIBUTION_LIMITS.k401.toLocaleString()} statutory limit)`
+      : `$${Math.round(employeeDeferral).toLocaleString()} employee deferral`;
+
     return {
       ...base,
       state: 'ACTIVE',
       estimatedAnnualValue,
       reason:
         `Your ${incomeSource} qualifies you to open a Solo 401(k) or SEP IRA. ` +
-        `You can contribute as both employee (up to $${CONTRIBUTION_LIMITS.k401.toLocaleString()} ` +
-        `elective deferral) and employer (up to 25% of net self-employment earnings — ` +
-        `≈$${Math.round(employerContribution).toLocaleString()} on your current income), ` +
-        `for a combined contribution of up to ` +
-        `$${Math.round(totalAllowable).toLocaleString()}/year. ` +
+        `Net self-employment earnings after the SE-tax adjustment: ` +
+        `$${Math.round(netSEEarnings).toLocaleString()}. ` +
+        `Allowable contributions: ${deferralNote} + ` +
+        `$${Math.round(employerContribution).toLocaleString()} employer profit-sharing (25% of net earnings) ` +
+        `= $${Math.round(totalContribution).toLocaleString()} total. ` +
         `At your combined ${(combinedMarginalRate * 100).toFixed(1)}% marginal rate, ` +
-        `that deduction is worth ~$${estimatedAnnualValue.toLocaleString()} in current-year ` +
-        `tax savings. ` +
-        `A Solo 401(k) is generally preferred over a SEP IRA when self-employment income ` +
-        `is moderate, because the employee deferral tier allows larger contributions at ` +
-        `lower income levels and supports a Roth election on the employee portion.`,
+        `that deduction is worth ~$${estimatedAnnualValue.toLocaleString()} in current-year tax savings. ` +
+        `A Solo 401(k) is generally preferred over a SEP IRA at moderate self-employment income ` +
+        `because the employee deferral tier captures more of the available headroom and ` +
+        `supports a Roth election on the employee portion.`,
     };
   },
 };
