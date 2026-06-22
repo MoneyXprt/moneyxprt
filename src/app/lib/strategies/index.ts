@@ -4,4 +4,7 @@ export { hireKids }                from './modules/hireKids';
 export { backdoorRoth }            from './modules/backdoorRoth';
 export { reps }                    from './modules/reps';
 export { depreciation }            from './modules/depreciation';
+export { hsa }                     from './modules/hsa';
+export { megaBackdoorRoth }        from './modules/megaBackdoorRoth';
+export { soloK }                   from './modules/soloK';
 export { registry, evaluateAll }   from './registry';

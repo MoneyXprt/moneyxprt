@@ -1,9 +1,12 @@
 import type { Strategy, FinancialSnapshot, StrategyResult } from './types';
-import { augustaRule }  from './modules/augustaRule';
-import { hireKids }     from './modules/hireKids';
-import { backdoorRoth } from './modules/backdoorRoth';
-import { reps }         from './modules/reps';
-import { depreciation } from './modules/depreciation';
+import { augustaRule }      from './modules/augustaRule';
+import { hireKids }         from './modules/hireKids';
+import { backdoorRoth }     from './modules/backdoorRoth';
+import { reps }             from './modules/reps';
+import { depreciation }     from './modules/depreciation';
+import { hsa }              from './modules/hsa';
+import { megaBackdoorRoth } from './modules/megaBackdoorRoth';
+import { soloK }            from './modules/soloK';
 
 /**
  * All registered strategy modules.
@@ -15,6 +18,9 @@ export const registry: Strategy[] = [
   backdoorRoth,
   reps,
   depreciation,
+  hsa,
+  megaBackdoorRoth,
+  soloK,
 ];
 
 /**

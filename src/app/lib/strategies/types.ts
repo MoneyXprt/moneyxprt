@@ -19,10 +19,11 @@ export interface FinancialSnapshot {
   hasHsaAvailable: boolean;
   consideringRealEstate: boolean;
   debts: { type: string; balance: number; rate: number; payment: number }[];
-  // Real-estate enrichment fields (optional — populated once the user
-  // has a specific acquisition in mind or has qualified for REPS)
+  // Real-estate enrichment fields (optional)
   plannedPropertyValue?: number;
   repsQualified?: boolean;
+  // Retirement plan enrichment (optional)
+  employer401kAllowsAfterTax?: boolean;
 }
 
 export interface StrategyResult {

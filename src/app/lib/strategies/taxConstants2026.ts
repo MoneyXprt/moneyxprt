@@ -47,14 +47,15 @@ export const BRACKETS: Record<'single' | 'mfj', { over: number; rate: number }[]
 // ─── Retirement & account contribution limits ────────────────────────────────
 
 export const CONTRIBUTION_LIMITS = {
-  k401:         24_500,  // employee elective deferral
-  k401CatchUp:  32_000,  // age 50+ (includes standard limit)
-  ira:           7_000,  // traditional & Roth combined
-  iraCatchUp:    8_000,  // age 50+
-  hsaSelf:       4_400,  // self-only HDHP coverage
-  hsaFamily:     8_750,  // family HDHP coverage
-  sepIraMax:    70_000,  // §415 annual additions limit
-  simpleIra:    16_500,  // SIMPLE IRA elective deferrals
+  k401:               24_500,  // employee elective deferral
+  k401CatchUp:        32_000,  // age 50+ (includes standard limit)
+  ira:                 7_000,  // traditional & Roth combined
+  iraCatchUp:          8_000,  // age 50+
+  hsaSelf:             4_400,  // self-only HDHP coverage
+  hsaFamily:           8_750,  // family HDHP coverage
+  sepIraMax:          70_000,  // §415 annual additions limit
+  simpleIra:          16_500,  // SIMPLE IRA elective deferrals
+  megaBackdoorRoth:   46_500,  // after-tax 401k headroom (§415 max − employee deferral)
 } as const;
 
 // ─── Roth IRA income phaseout ranges ────────────────────────────────────────
