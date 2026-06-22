@@ -5,6 +5,8 @@ import type { FinancialSnapshot } from '@/app/lib/strategies';
 const TEST_SNAPSHOT: FinancialSnapshot = {
   w2Income:             243_500,
   bonusIncome:          111_692,
+  bonusDeferred:              0,
+  bonusTakenAsCash:     111_692,
   income1099:             6_600,
   spouseWorks:          false,
   filingStatus:         'mfj',

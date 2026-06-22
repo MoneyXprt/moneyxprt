@@ -2,7 +2,9 @@ export type StrategyState = 'ACTIVE' | 'VERIFY' | 'LOCKED' | 'NOT_APPLICABLE';
 
 export interface FinancialSnapshot {
   w2Income: number;
-  bonusIncome: number;
+  bonusIncome: number;       // gross total bonus / profit share
+  bonusDeferred: number;     // portion deferred (not taxable this year)
+  bonusTakenAsCash: number;  // portion taken as cash (taxable this year) = bonusIncome − bonusDeferred
   income1099: number;
   spouseWorks: boolean;
   filingStatus: 'single' | 'mfj';

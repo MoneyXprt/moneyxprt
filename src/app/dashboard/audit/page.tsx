@@ -14,7 +14,9 @@ import type { Session } from '@supabase/supabase-js';
 interface FormState {
   // Step 1 — Income
   w2Income:           string;
-  bonusIncome:        string;
+  bonusIncome:        string;   // gross total
+  bonusDefers:        boolean;  // UI toggle: does any of this get deferred?
+  bonusDeferred:      string;   // amount deferred (user input)
   income1099:         string;
   spouseWorks:        boolean;
   // Step 2 — Household
@@ -39,7 +41,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
-  w2Income: '', bonusIncome: '', income1099: '', spouseWorks: false,
+  w2Income: '', bonusIncome: '', bonusDefers: false, bonusDeferred: '', income1099: '', spouseWorks: false,
   filingStatus: 'mfj', state: 'CA',
   dependentsUnder18: '', hasBusinessEntity: false, businessRevenue: '',
   currentTaxPaid: '', monthlySpend: '', emergencyFund: '',
@@ -53,6 +55,8 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
   return {
     w2Income:           String(s.w2Income || ''),
     bonusIncome:        String(s.bonusIncome || ''),
+    bonusDefers:        s.bonusDeferred > 0,
+    bonusDeferred:      String(s.bonusDeferred || ''),
     income1099:         String(s.income1099 || ''),
     spouseWorks:        s.spouseWorks,
     filingStatus:       s.filingStatus,
@@ -287,9 +291,15 @@ export default function AuditPage() {
     setSaving(true);
     setSaveError(null);
     try {
+      const grossBonus      = n(form.bonusIncome);
+      const bonusDeferred   = form.bonusDefers ? Math.min(n(form.bonusDeferred), grossBonus) : 0;
+      const bonusTakenAsCash = grossBonus - bonusDeferred;
+
       const snapshot: FinancialSnapshot = {
         w2Income:            n(form.w2Income),
-        bonusIncome:         n(form.bonusIncome),
+        bonusIncome:         grossBonus,
+        bonusDeferred,
+        bonusTakenAsCash,
         income1099:          n(form.income1099),
         spouseWorks:         form.spouseWorks,
         filingStatus:        form.filingStatus,
@@ -394,9 +404,47 @@ export default function AuditPage() {
                 <DollarInput label="W-2 base salary"
                   hint="Your gross annual salary before taxes or deductions."
                   value={form.w2Income} onChange={v => set('w2Income', v)} />
-                <DollarInput label="Bonus / profit share"
-                  hint="Expected annual bonus, commission, or profit-sharing."
-                  value={form.bonusIncome} onChange={v => set('bonusIncome', v)} />
+
+                {/* Bonus section with deferred comp split */}
+                <DollarInput label="Gross bonus / profit share"
+                  hint="Total expected bonus, commission, or profit-sharing before any deferral."
+                  value={form.bonusIncome}
+                  onChange={v => {
+                    set('bonusIncome', v);
+                    // Clamp deferred if it now exceeds new gross
+                    if (n(form.bonusDeferred) > n(v)) set('bonusDeferred', v);
+                  }} />
+
+                {n(form.bonusIncome) > 0 && (
+                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
+                    <Toggle
+                      label="Do you defer any of this?"
+                      hint="Elective or mandatory deferred compensation you won't receive as cash this year."
+                      value={form.bonusDefers}
+                      onChange={v => { set('bonusDefers', v); if (!v) set('bonusDeferred', ''); }}
+                    />
+                    {form.bonusDefers && (
+                      <>
+                        <DollarInput
+                          label="Amount deferred (not taxable this year)"
+                          hint="Deferred comp, mandatory or elective, that you won't receive as cash this year."
+                          value={form.bonusDeferred}
+                          onChange={v => {
+                            const capped = Math.min(n(v), n(form.bonusIncome));
+                            set('bonusDeferred', capped === n(v) ? v : String(capped));
+                          }}
+                        />
+                        <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-100 px-4 py-2.5">
+                          <span className="text-xs text-gray-500">Taken as cash this year</span>
+                          <span className="text-sm font-semibold text-gray-900 tabular-nums">
+                            ${Math.max(0, n(form.bonusIncome) - n(form.bonusDeferred)).toLocaleString()}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <DollarInput label="1099 / side income"
                   hint="Freelance, consulting, or any self-employment income."
                   value={form.income1099} onChange={v => set('income1099', v)} />

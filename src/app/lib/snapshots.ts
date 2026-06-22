@@ -13,6 +13,8 @@ interface SnapshotRow {
   created_at: string;
   w2_income: number;
   bonus_income: number;
+  bonus_deferred: number;
+  bonus_taken_as_cash: number;
   income_1099: number;
   spouse_works: boolean;
   filing_status: string;
@@ -43,6 +45,8 @@ function toRow(
     user_id:                       userId,
     w2_income:                     s.w2Income,
     bonus_income:                  s.bonusIncome,
+    bonus_deferred:                s.bonusDeferred,
+    bonus_taken_as_cash:           s.bonusTakenAsCash,
     income_1099:                   s.income1099,
     spouse_works:                  s.spouseWorks,
     filing_status:                 s.filingStatus,
@@ -68,6 +72,8 @@ function fromRow(row: SnapshotRow): FinancialSnapshot {
   return {
     w2Income:                    Number(row.w2_income),
     bonusIncome:                 Number(row.bonus_income),
+    bonusDeferred:               Number(row.bonus_deferred),
+    bonusTakenAsCash:            Number(row.bonus_taken_as_cash),
     income1099:                  Number(row.income_1099),
     spouseWorks:                 row.spouse_works,
     filingStatus:                row.filing_status as 'single' | 'mfj',
