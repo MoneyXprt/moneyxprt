@@ -7,6 +7,9 @@ import { depreciation }     from './modules/depreciation';
 import { hsa }              from './modules/hsa';
 import { megaBackdoorRoth } from './modules/megaBackdoorRoth';
 import { soloK }            from './modules/soloK';
+import { sCorpElection }    from './modules/sCorpElection';
+import { qbi }              from './modules/qbi';
+import { accountablePlan }  from './modules/accountablePlan';
 
 /**
  * All registered strategy modules.
@@ -21,6 +24,9 @@ export const registry: Strategy[] = [
   hsa,
   megaBackdoorRoth,
   soloK,
+  sCorpElection,
+  qbi,
+  accountablePlan,
 ];
 
 /**

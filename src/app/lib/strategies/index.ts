@@ -7,4 +7,7 @@ export { depreciation }            from './modules/depreciation';
 export { hsa }                     from './modules/hsa';
 export { megaBackdoorRoth }        from './modules/megaBackdoorRoth';
 export { soloK }                   from './modules/soloK';
+export { sCorpElection }           from './modules/sCorpElection';
+export { qbi }                     from './modules/qbi';
+export { accountablePlan }         from './modules/accountablePlan';
 export { registry, evaluateAll }   from './registry';

@@ -102,6 +102,37 @@ export const SE_TAX_RATE = 0.153;
 /** Net earnings subject to SE tax = gross × this factor (accounts for ½ SE deduction). */
 export const SE_TAX_DEDUCTIBLE_FRACTION = 0.9235;
 
+// ─── S-Corp election ─────────────────────────────────────────────────────────
+
+/**
+ * Minimum net business revenue at which S-Corp payroll/compliance costs
+ * are typically outweighed by the SE-tax savings on distributions.
+ */
+export const SCORP_REVENUE_THRESHOLD = 50_000;
+
+/**
+ * Fraction of S-Corp revenue treated as reasonable W-2 salary (subject to
+ * FICA/SE tax). The remainder is taken as a distribution (no SE tax).
+ * IRS "reasonable compensation" guidance varies; 60/40 is a conservative split.
+ */
+export const SCORP_SALARY_FRACTION    = 0.60;
+export const SCORP_DISTRIBUTION_FRACTION = 0.40;
+
+// ─── Qualified Business Income (IRC §199A) ────────────────────────────────────
+
+/** Maximum QBI deduction rate (20% of qualified business income). */
+export const QBI_DEDUCTION_RATE = 0.20;
+
+/**
+ * Taxable income thresholds above which the §199A W-2-wage limitation
+ * (and full phase-out for specified service trades or businesses) begins.
+ * Phase-out is complete $50k (single) / $100k (MFJ) above these thresholds.
+ */
+export const QBI_PHASEOUT_START = {
+  single: 197_300,
+  mfj:    394_600,
+} as const;
+
 // ─── Projection assumptions ──────────────────────────────────────────────────
 
 /** Annualised long-run real + nominal return assumption for portfolio projections (%). */
