@@ -2,6 +2,8 @@ import type { Strategy, FinancialSnapshot, StrategyResult } from './types';
 import { augustaRule }  from './modules/augustaRule';
 import { hireKids }     from './modules/hireKids';
 import { backdoorRoth } from './modules/backdoorRoth';
+import { reps }         from './modules/reps';
+import { depreciation } from './modules/depreciation';
 
 /**
  * All registered strategy modules.
@@ -11,6 +13,8 @@ export const registry: Strategy[] = [
   augustaRule,
   hireKids,
   backdoorRoth,
+  reps,
+  depreciation,
 ];
 
 /**
