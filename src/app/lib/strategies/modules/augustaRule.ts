@@ -47,7 +47,7 @@ export const augustaRule: Strategy = {
     }
 
     const taxableIncome = getTaxableIncome(s);
-    const marginalRate  = getMarginalRate(taxableIncome, s.filingStatus);
+    const marginalRate  = getMarginalRate(taxableIncome, s.filingStatus, s.state);
     const annualRental  = AUGUSTA_RULE_DAILY_RATE * AUGUSTA_RULE_MAX_DAYS;
     const estimatedAnnualValue = Math.round(annualRental * marginalRate);
 

@@ -78,7 +78,7 @@ export const hireKids: Strategy = {
     const wagePerChild = Math.min(KID_STANDARD_DEDUCTION, payrollBudgetPerChild);
 
     const taxableIncome        = getTaxableIncome(s);
-    const marginalRate         = getMarginalRate(taxableIncome, s.filingStatus);
+    const marginalRate         = getMarginalRate(taxableIncome, s.filingStatus, s.state);
     const estimatedAnnualValue = Math.round(wagePerChild * marginalRate * s.dependentsUnder18);
 
     const wageDisplay   = Math.round(wagePerChild).toLocaleString();

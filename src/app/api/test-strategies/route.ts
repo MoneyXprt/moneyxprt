@@ -25,5 +25,8 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
 
 export function GET() {
   const results = evaluateAll(TEST_SNAPSHOT);
-  return NextResponse.json({ snapshot: TEST_SNAPSHOT, results });
+  return NextResponse.json(
+    { snapshot: TEST_SNAPSHOT, results },
+    { headers: { 'Content-Type': 'application/json; charset=utf-8' } },
+  );
 }

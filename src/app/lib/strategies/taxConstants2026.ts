@@ -112,13 +112,55 @@ export const LTCG_RATE = 0.15;
 /** Default projection horizon (years) for Roth / retirement value estimates. */
 export const DEFAULT_PROJECTION_YEARS = 20;
 
+// ─── State income tax rates ───────────────────────────────────────────────────
+// Simplified marginal-rate lookup keyed by 2-letter state abbreviation.
+// Each entry is an array of tiers sorted ascending by `over`; the highest
+// tier whose `over` threshold the income clears is the marginal rate.
+// Add or expand entries here as needed — getMarginalRate picks them up
+// automatically. States not listed default to 0%.
+
+export interface StateTaxTier {
+  over: number;   // taxable income must exceed this to apply `rate`
+  rate: number;
+}
+
+export const STATE_TAX_RATES: Record<string, StateTaxTier[]> = {
+  // California — simplified; 9.3% kicks in above ~$70k (single or joint)
+  CA: [
+    { over:       0, rate: 0.010 },
+    { over:  70_000, rate: 0.093 },
+  ],
+
+  // No-income-tax states
+  AK: [{ over: 0, rate: 0 }],
+  FL: [{ over: 0, rate: 0 }],
+  NV: [{ over: 0, rate: 0 }],
+  NH: [{ over: 0, rate: 0 }],  // wages only (interest/dividends tax repealed 2025)
+  SD: [{ over: 0, rate: 0 }],
+  TN: [{ over: 0, rate: 0 }],
+  TX: [{ over: 0, rate: 0 }],
+  WA: [{ over: 0, rate: 0 }],
+  WY: [{ over: 0, rate: 0 }],
+};
+
+/** Default rate for states not listed in STATE_TAX_RATES. */
+const DEFAULT_STATE_RATE = 0;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Returns the marginal federal income tax rate for the given taxable income
- * and filing status, based on 2026 brackets.
- */
-export function getMarginalRate(
+/** Returns the state marginal income tax rate for the given income and state. */
+export function getStateMarginalRate(taxableIncome: number, state: string): number {
+  const tiers = STATE_TAX_RATES[state.toUpperCase()];
+  if (!tiers) return DEFAULT_STATE_RATE;
+  let rate = 0;
+  for (const tier of tiers) {
+    if (taxableIncome > tier.over) rate = tier.rate;
+  }
+  return rate;
+}
+
+/** Returns the federal marginal income tax rate only. */
+export function getFederalMarginalRate(
   taxableIncome: number,
   filingStatus: 'single' | 'mfj',
 ): number {
@@ -128,6 +170,19 @@ export function getMarginalRate(
     if (taxableIncome > bracket.over) rate = bracket.rate;
   }
   return rate;
+}
+
+/**
+ * Returns the combined marginal rate: federal bracket + state marginal rate.
+ * Use this everywhere a marginal rate is needed in strategy modules.
+ */
+export function getMarginalRate(
+  taxableIncome: number,
+  filingStatus: 'single' | 'mfj',
+  state: string,
+): number {
+  return getFederalMarginalRate(taxableIncome, filingStatus)
+       + getStateMarginalRate(taxableIncome, state);
 }
 
 /**
