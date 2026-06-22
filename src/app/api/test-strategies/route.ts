@@ -20,6 +20,9 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
   traditionalIraBalance: 300,
   hasHsaAvailable:      false,
   consideringRealEstate: true,
+  plannedPropertyValue: 350_000,
+  repsQualified: true,
+
   debts:                [],
 };
 
