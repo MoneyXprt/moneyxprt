@@ -225,7 +225,7 @@ export default function DashboardHome() {
 
     const [{ data: profile }, { count: snapCount }] = await Promise.all([
       sb.from('freedom_profiles')
-        .select('freedom_type, freedom_number')
+        .select('freedom_type, freedom_number_monthly')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -237,7 +237,7 @@ export default function DashboardHome() {
 
     setProgress({
       visionDone:   !!profile?.freedom_type,
-      numberDone:   Number(profile?.freedom_number ?? 0) > 0,
+      numberDone:   Number(profile?.freedom_number_monthly ?? 0) > 0,
       snapshotDone: (snapCount ?? 0) > 0,
     });
     setProgressLoading(false);

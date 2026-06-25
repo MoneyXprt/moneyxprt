@@ -214,7 +214,7 @@ export default function PlanResultsPage() {
         { data: constraintsRow },
       ] = await Promise.all([
         sb.from('freedom_profiles')
-          .select('vision_text, target_free_age, freedom_type, freedom_number, portfolio_target, housing, health_insurance, food, transportation, travel, kids_family, savings_buffer, miscellaneous')
+          .select('vision_text, target_free_age, freedom_type, freedom_number_monthly, portfolio_target, housing, health_insurance, food, transportation, travel, kids, savings_buffer, misc')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -233,7 +233,7 @@ export default function PlanResultsPage() {
       // Validate completeness
       const gaps: MissingStepInfo[] = [];
       if (!profileRow?.freedom_type)       gaps.push({ label: 'Freedom Vision',     href: '/dashboard/freedom-vision' });
-      if (!Number(profileRow?.freedom_number ?? 0)) gaps.push({ label: 'Freedom Number', href: '/dashboard/freedom-calculator' });
+      if (!Number(profileRow?.freedom_number_monthly ?? 0)) gaps.push({ label: 'Freedom Number', href: '/dashboard/freedom-calculator' });
       if (!snapshotResult)                  gaps.push({ label: 'Financial Snapshot', href: '/dashboard/audit' });
       if (!assetRows?.length)               gaps.push({ label: 'Asset Preferences',  href: '/dashboard/asset-preferences' });
       if (!constraintsRow)                  gaps.push({ label: 'Constraints',         href: '/dashboard/constraints' });
@@ -246,7 +246,7 @@ export default function PlanResultsPage() {
 
       // Assemble inputs
       const snapshot = snapshotResult!;
-      const freedomNumberMonthly = Number(profileRow!.freedom_number);
+      const freedomNumberMonthly = Number(profileRow!.freedom_number_monthly);
       const inputs = {
         freedomProfile: {
           visionText:    profileRow!.vision_text ?? null,
@@ -262,9 +262,9 @@ export default function PlanResultsPage() {
             food:           Number(profileRow!.food),
             transportation: Number(profileRow!.transportation),
             travel:         Number(profileRow!.travel),
-            kids_family:    Number(profileRow!.kids_family),
+            kids:           Number(profileRow!.kids),
             savings_buffer: Number(profileRow!.savings_buffer),
-            miscellaneous:  Number(profileRow!.miscellaneous),
+            misc:           Number(profileRow!.misc),
           },
         },
         snapshot,
