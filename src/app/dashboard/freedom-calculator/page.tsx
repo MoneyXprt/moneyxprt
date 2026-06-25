@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
@@ -295,6 +296,7 @@ function ResultsScreen({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function FreedomCalculatorPage() {
+  const router = useRouter();
   const [session, setSession]           = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -375,9 +377,9 @@ export default function FreedomCalculatorPage() {
           { onConflict: 'user_id' },
         );
       if (error) throw error;
+      router.push('/dashboard/audit');
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed. Please try again.');
-    } finally {
       setSaving(false);
     }
   };
