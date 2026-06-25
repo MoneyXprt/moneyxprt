@@ -24,56 +24,67 @@ export default function PlanFlowController() {
     const sb = getBrowserSupabaseClient();
 
     async function route() {
-      // Auth check
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) { router.replace('/dashboard/freedom-vision'); return; }
+      // Use getSession() — reads from local storage / cookie without a network
+      // round-trip, so it works reliably on first render after a redirect.
+      const { data: { session } } = await sb.auth.getSession();
+      console.log('[plan/route] session:', session ? `uid=${session.user.id}` : 'null');
+      if (!session) { router.replace('/dashboard/freedom-vision'); return; }
+
+      const userId = session.user.id;
 
       // Fetch the latest freedom_profile for this user
-      const { data: profile } = await sb
+      const { data: profile, error: profileError } = await sb
         .from('freedom_profiles')
-        .select('freedom_type, freedom_number')
-        .eq('user_id', user.id)
+        .select('freedom_type, freedom_number_monthly')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      console.log('[plan/route] profile:', profile, 'error:', profileError?.message);
 
-      // Step 1 — Freedom Vision: complete when freedom_type is set (last screen of vision)
+      // Step 1 — Freedom Vision: complete when freedom_type is set
       const visionDone = !!profile?.freedom_type;
+      console.log('[plan/route] visionDone:', visionDone);
       if (!visionDone) { router.replace('/dashboard/freedom-vision'); return; }
 
-      // Step 2 — Freedom Number: complete when freedom_number > 0
-      const numberDone = Number(profile?.freedom_number ?? 0) > 0;
+      // Step 2 — Freedom Number: complete when freedom_number_monthly > 0
+      const numberDone = Number(profile?.freedom_number_monthly ?? 0) > 0;
+      console.log('[plan/route] numberDone:', numberDone, '(value:', profile?.freedom_number_monthly, ')');
       if (!numberDone) { router.replace('/dashboard/freedom-calculator'); return; }
 
       // Step 3 — Financial Snapshot: complete when any row exists
-      const { count } = await sb
+      const { count: snapCount, error: snapError } = await sb
         .from('financial_snapshots')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
+      console.log('[plan/route] snapCount:', snapCount, 'error:', snapError?.message);
 
-      const snapshotDone = (count ?? 0) > 0;
+      const snapshotDone = (snapCount ?? 0) > 0;
       if (!snapshotDone) { router.replace('/dashboard/audit'); return; }
 
       // Step 4 — Asset Preferences: complete when at least one row exists
-      const { count: assetCount } = await sb
+      const { count: assetCount, error: assetError } = await sb
         .from('asset_preferences')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
+      console.log('[plan/route] assetCount:', assetCount, 'error:', assetError?.message);
 
       const assetsDone = (assetCount ?? 0) > 0;
       if (!assetsDone) { router.replace('/dashboard/asset-preferences'); return; }
 
       // Step 5 — Constraints: complete when a row exists
-      const { data: constraints } = await sb
+      const { data: constraints, error: constraintsError } = await sb
         .from('user_constraints')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
+      console.log('[plan/route] constraints:', constraints, 'error:', constraintsError?.message);
 
       const constraintsDone = !!constraints;
       if (!constraintsDone) { router.replace('/dashboard/constraints'); return; }
 
       // All five done → generate and show the plan
+      console.log('[plan/route] all steps complete → /dashboard/plan/results');
       router.replace('/dashboard/plan/results');
     }
 
