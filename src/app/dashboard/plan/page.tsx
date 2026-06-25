@@ -52,24 +52,30 @@ export default function PlanFlowController() {
       console.log('[plan/route] numberDone:', numberDone, '(value:', profile?.freedom_number_monthly, ')');
       if (!numberDone) { router.replace('/dashboard/freedom-calculator'); return; }
 
-      // Step 3 — Financial Snapshot: complete when any row exists
-      const { count: snapCount, error: snapError } = await sb
+      // Step 3 — Financial Snapshot: complete when any row exists.
+      // Using a regular SELECT (GET request) instead of count/head (HEAD request)
+      // so the auth token is applied the same way as the freedom_profiles query.
+      const { data: snapRows, error: snapError } = await sb
         .from('financial_snapshots')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId);
-      console.log('[plan/route] snapCount:', snapCount, 'error:', snapError?.message);
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
+      console.log('[plan/route] snapRows (raw):', snapRows, 'error:', snapError?.message);
 
-      const snapshotDone = (snapCount ?? 0) > 0;
+      const snapshotDone = Array.isArray(snapRows) && snapRows.length > 0;
+      console.log('[plan/route] snapshotDone:', snapshotDone);
       if (!snapshotDone) { router.replace('/dashboard/audit'); return; }
 
       // Step 4 — Asset Preferences: complete when at least one row exists
-      const { count: assetCount, error: assetError } = await sb
+      const { data: assetRows, error: assetError } = await sb
         .from('asset_preferences')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId);
-      console.log('[plan/route] assetCount:', assetCount, 'error:', assetError?.message);
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
+      console.log('[plan/route] assetRows (raw):', assetRows, 'error:', assetError?.message);
 
-      const assetsDone = (assetCount ?? 0) > 0;
+      const assetsDone = Array.isArray(assetRows) && assetRows.length > 0;
+      console.log('[plan/route] assetsDone:', assetsDone);
       if (!assetsDone) { router.replace('/dashboard/asset-preferences'); return; }
 
       // Step 5 — Constraints: complete when a row exists
