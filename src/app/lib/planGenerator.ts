@@ -309,93 +309,137 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
   const roadmap: AssetRoadmapRow[] = [];
   let capitalAccumulated = 0;
   let cumulativeMonthlyIncome = currentPassiveMonthly;
-  let assetCycleIndex = 0;
+  let capitalCycleIndex = 0;
   let projectedFreedomYear = currentYear + 20;
   let yearsToFreedom = 20;
   const freedomTarget = freedomNumber.monthlyTarget;
+
+  /** Monthly income growth cap and step for zero-cost content businesses. */
+  const ZERO_COST_GROWTH_STEP = 500;
+  const ZERO_COST_INCOME_CAP  = 5_000;
+  const ZERO_COST_GROWTH_INTERVAL = 2; // years between growth events
+
+  // Separate zero-cost assets (digital_products) from capital-required assets.
+  // This eliminates the infinite-loop bug caused by cycling back to a
+  // already-acquired zero-cost asset while inside the while loop.
+  const zeroCostEligible   = eligibleConfigs.filter(c => c.downPayment === 0);
+  const capitalEligible    = eligibleConfigs.filter(c => c.downPayment > 0);
+  const fallbackCapital    = [ASSET_CONFIGS.find(c => c.id === 'index_investing')!];
+  const capitalAssets      = capitalEligible.length > 0 ? capitalEligible : fallbackCapital;
+
+  // Track launched zero-cost assets: id → { launchYear, currentMonthlyIncome }
+  const launchedZeroCost = new Map<string, { launchYear: number; currentIncome: number; cfg: AssetConfig }>();
 
   // If already free
   if (gapMonthly <= 0) {
     projectedFreedomYear = currentYear;
     yearsToFreedom = 0;
   } else {
-    const cycleAssets = eligibleConfigs.length > 0 ? eligibleConfigs : [ASSET_CONFIGS.find(c => c.id === 'index_investing')!];
-
     for (let year = 1; year <= 20; year++) {
       capitalAccumulated += deployableCapitalPerYear;
       let yearAcquired = false;
 
-      // Acquire as many assets as capital allows this year
-      while (cycleAssets.length > 0) {
-        const cfg = cycleAssets[assetCycleIndex % cycleAssets.length];
-        const downPayment = cfg.downPayment;
-
-        // digital_products has 0 downPayment — acquire once if not already acquired
-        if (downPayment === 0) {
-          const alreadyAcquired = roadmap.some(r => r.assetType === cfg.id && r.capitalDeployed === 0 && r.estimatedMonthlyIncomeAdded > 0);
-          if (!alreadyAcquired) {
-            const income = getMonthlyIncome(cfg, 0);
-            cumulativeMonthlyIncome += income;
-            roadmap.push({
-              year,
-              calendarYear: currentYear + year,
-              action: `Launch ${cfg.title}`,
-              assetType: cfg.id,
-              capitalDeployed: 0,
-              estimatedMonthlyIncomeAdded: income,
-              cumulativeMonthlyIncome,
-              remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
-            });
-            assetCycleIndex++;
-            yearAcquired = true;
-          } else {
-            assetCycleIndex++;
-          }
+      // ── 1. Launch zero-cost assets (each only once, in year 1 of the plan) ──
+      for (const cfg of zeroCostEligible) {
+        if (!launchedZeroCost.has(cfg.id)) {
+          const income = cfg.baseMonthlyIncome;
+          cumulativeMonthlyIncome += income;
+          launchedZeroCost.set(cfg.id, { launchYear: year, currentIncome: income, cfg });
+          roadmap.push({
+            year,
+            calendarYear: currentYear + year,
+            action: `Launch ${cfg.title}`,
+            assetType: cfg.id,
+            capitalDeployed: 0,
+            estimatedMonthlyIncomeAdded: income,
+            cumulativeMonthlyIncome,
+            remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+          });
+          yearAcquired = true;
           if (cumulativeMonthlyIncome >= freedomTarget) break;
-          continue;
         }
-
-        if (capitalAccumulated < downPayment) break;
-
-        capitalAccumulated -= downPayment;
-        const income = getMonthlyIncome(cfg, downPayment);
-        cumulativeMonthlyIncome += income;
-        roadmap.push({
-          year,
-          calendarYear: currentYear + year,
-          action: `Acquire ${cfg.title}`,
-          assetType: cfg.id,
-          capitalDeployed: downPayment,
-          estimatedMonthlyIncomeAdded: income,
-          cumulativeMonthlyIncome,
-          remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
-        });
-        assetCycleIndex++;
-        yearAcquired = true;
-        if (cumulativeMonthlyIncome >= freedomTarget) break;
+      }
+      if (cumulativeMonthlyIncome >= freedomTarget) {
+        projectedFreedomYear = currentYear + year;
+        yearsToFreedom = year;
+        break;
       }
 
+      // ── 2. Growth events for launched zero-cost assets ────────────────────
+      // Every ZERO_COST_GROWTH_INTERVAL years after launch, income grows by
+      // ZERO_COST_GROWTH_STEP up to ZERO_COST_INCOME_CAP.
+      for (const [id, state] of launchedZeroCost) {
+        const yearsSinceLaunch = year - state.launchYear;
+        const isDueForGrowth   = yearsSinceLaunch > 0 && yearsSinceLaunch % ZERO_COST_GROWTH_INTERVAL === 0;
+        if (isDueForGrowth && state.currentIncome < ZERO_COST_INCOME_CAP) {
+          const growth = Math.min(ZERO_COST_GROWTH_STEP, ZERO_COST_INCOME_CAP - state.currentIncome);
+          cumulativeMonthlyIncome += growth;
+          state.currentIncome     += growth;
+          launchedZeroCost.set(id, state);
+          roadmap.push({
+            year,
+            calendarYear: currentYear + year,
+            action: `${state.cfg.title} revenue grows to ${fmt(state.currentIncome)}/mo`,
+            assetType: id,
+            capitalDeployed: 0,
+            estimatedMonthlyIncomeAdded: growth,
+            cumulativeMonthlyIncome,
+            remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+          });
+          yearAcquired = true;
+          if (cumulativeMonthlyIncome >= freedomTarget) break;
+        }
+      }
+      if (cumulativeMonthlyIncome >= freedomTarget) {
+        projectedFreedomYear = currentYear + year;
+        yearsToFreedom = year;
+        break;
+      }
+
+      // ── 3. Acquire capital assets while funds allow ───────────────────────
+      let acquired = true;
+      while (acquired && capitalAssets.length > 0) {
+        acquired = false;
+        const cfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
+        if (capitalAccumulated >= cfg.downPayment) {
+          capitalAccumulated -= cfg.downPayment;
+          const income = getMonthlyIncome(cfg, cfg.downPayment);
+          cumulativeMonthlyIncome += income;
+          roadmap.push({
+            year,
+            calendarYear: currentYear + year,
+            action: `Acquire ${cfg.title}`,
+            assetType: cfg.id,
+            capitalDeployed: cfg.downPayment,
+            estimatedMonthlyIncomeAdded: income,
+            cumulativeMonthlyIncome,
+            remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+          });
+          capitalCycleIndex++;
+          yearAcquired = true;
+          acquired = true;
+          if (cumulativeMonthlyIncome >= freedomTarget) break;
+        }
+      }
+      if (cumulativeMonthlyIncome >= freedomTarget) {
+        projectedFreedomYear = currentYear + year;
+        yearsToFreedom = year;
+        break;
+      }
+
+      // ── 4. Nothing acquired — show capital-building progress ─────────────
       if (!yearAcquired) {
-        const nextCfg = cycleAssets[assetCycleIndex % cycleAssets.length];
-        const needed = nextCfg.downPayment;
+        const nextCfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
         roadmap.push({
           year,
           calendarYear: currentYear + year,
-          action: needed > 0
-            ? `Building toward ${nextCfg.title} (${fmt(capitalAccumulated)} of ${fmt(needed)} saved)`
-            : `Growing ${nextCfg.title} income stream`,
+          action: `Building toward ${nextCfg.title} (${fmt(capitalAccumulated)} of ${fmt(nextCfg.downPayment)} saved)`,
           assetType: nextCfg.id,
           capitalDeployed: 0,
           estimatedMonthlyIncomeAdded: 0,
           cumulativeMonthlyIncome,
           remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
         });
-      }
-
-      if (cumulativeMonthlyIncome >= freedomTarget) {
-        projectedFreedomYear = currentYear + year;
-        yearsToFreedom = year;
-        break;
       }
     }
   }
