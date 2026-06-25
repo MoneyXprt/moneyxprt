@@ -315,7 +315,7 @@ export default function FreedomCalculatorPage() {
         // Load most recent freedom profile if exists
         const { data } = await sb
           .from('freedom_profiles')
-          .select('housing,health_insurance,food,transportation,travel,kids_family,savings_buffer,miscellaneous')
+          .select('housing,health_insurance,food,transportation,travel,kids,savings_buffer,misc')
           .eq('user_id', s.user.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -324,8 +324,8 @@ export default function FreedomCalculatorPage() {
           setValues([
             Number(data.housing), Number(data.health_insurance),
             Number(data.food),    Number(data.transportation),
-            Number(data.travel),  Number(data.kids_family),
-            Number(data.savings_buffer), Number(data.miscellaneous),
+            Number(data.travel),  Number(data.kids),
+            Number(data.savings_buffer), Number(data.misc),
           ]);
         }
       }
@@ -354,23 +354,26 @@ export default function FreedomCalculatorPage() {
     if (!session) return;
     setSaving(true); setSaveError(null);
     try {
-      const freedomNumber  = total;
-      const portfolioTarget = total * 300;
+      const freedomNumberMonthly = total;
+      const portfolioTarget      = total * 300;
       const { error } = await getBrowserSupabaseClient()
         .from('freedom_profiles')
-        .insert({
-          user_id:          session.user.id,
-          housing:          values[0],
-          health_insurance: values[1],
-          food:             values[2],
-          transportation:   values[3],
-          travel:           values[4],
-          kids_family:      values[5],
-          savings_buffer:   values[6],
-          miscellaneous:    values[7],
-          freedom_number:   freedomNumber,
-          portfolio_target: portfolioTarget,
-        });
+        .upsert(
+          {
+            user_id:                session.user.id,
+            housing:                values[0],
+            health_insurance:       values[1],
+            food:                   values[2],
+            transportation:         values[3],
+            travel:                 values[4],
+            kids:                   values[5],
+            savings_buffer:         values[6],
+            misc:                   values[7],
+            freedom_number_monthly: freedomNumberMonthly,
+            portfolio_target:       portfolioTarget,
+          },
+          { onConflict: 'user_id' },
+        );
       if (error) throw error;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed. Please try again.');
