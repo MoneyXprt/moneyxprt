@@ -314,21 +314,29 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
   let yearsToFreedom = 20;
   const freedomTarget = freedomNumber.monthlyTarget;
 
-  /** Monthly income growth cap and step for zero-cost content businesses. */
-  const ZERO_COST_GROWTH_STEP = 500;
-  const ZERO_COST_INCOME_CAP  = 5_000;
-  const ZERO_COST_GROWTH_INTERVAL = 2; // years between growth events
+  /** Digital products / content business growth model. */
+  const ZERO_COST_GROWTH_STEP     = 1_000;   // +$1k/mo per growth event
+  const ZERO_COST_INCOME_CAP      = 15_000;  // capped at $15k/mo
+  const ZERO_COST_GROWTH_MONTHS   = 18;      // growth event every 18 months
+
+  // Index fund compounding — track a single growing balance rather than
+  // treating each acquisition as an independent fixed-income asset.
+  let indexFundBalance = 0;  // total capital ever deployed into index funds
 
   // Separate zero-cost assets (digital_products) from capital-required assets.
-  // This eliminates the infinite-loop bug caused by cycling back to a
-  // already-acquired zero-cost asset while inside the while loop.
-  const zeroCostEligible   = eligibleConfigs.filter(c => c.downPayment === 0);
-  const capitalEligible    = eligibleConfigs.filter(c => c.downPayment > 0);
-  const fallbackCapital    = [ASSET_CONFIGS.find(c => c.id === 'index_investing')!];
-  const capitalAssets      = capitalEligible.length > 0 ? capitalEligible : fallbackCapital;
+  const zeroCostEligible = eligibleConfigs.filter(c => c.downPayment === 0);
+  const capitalEligible  = eligibleConfigs.filter(c => c.downPayment > 0 && c.id !== 'index_investing');
+  const indexInvestingCfg = ASSET_CONFIGS.find(c => c.id === 'index_investing')!;
+  const wantsIndexInvesting = eligibleConfigs.some(c => c.id === 'index_investing');
+  // Fallback: if user selected only index investing and nothing else, use it as capital asset
+  const capitalAssets = capitalEligible.length > 0 ? capitalEligible
+    : wantsIndexInvesting ? []   // handled separately below
+    : [indexInvestingCfg];       // true fallback when nothing selected
 
-  // Track launched zero-cost assets: id → { launchYear, currentMonthlyIncome }
-  const launchedZeroCost = new Map<string, { launchYear: number; currentIncome: number; cfg: AssetConfig }>();
+  // Track launched zero-cost assets: id → { launchYear, growthCount, currentIncome, cfg }
+  const launchedZeroCost = new Map<string, {
+    launchYear: number; growthCount: number; currentIncome: number; cfg: AssetConfig;
+  }>();
 
   // If already free
   if (gapMonthly <= 0) {
@@ -344,7 +352,7 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
         if (!launchedZeroCost.has(cfg.id)) {
           const income = cfg.baseMonthlyIncome;
           cumulativeMonthlyIncome += income;
-          launchedZeroCost.set(cfg.id, { launchYear: year, currentIncome: income, cfg });
+          launchedZeroCost.set(cfg.id, { launchYear: year, growthCount: 0, currentIncome: income, cfg });
           roadmap.push({
             year,
             calendarYear: currentYear + year,
@@ -366,15 +374,18 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
       }
 
       // ── 2. Growth events for launched zero-cost assets ────────────────────
-      // Every ZERO_COST_GROWTH_INTERVAL years after launch, income grows by
+      // Every ZERO_COST_GROWTH_MONTHS (18) months after launch, income grows by
       // ZERO_COST_GROWTH_STEP up to ZERO_COST_INCOME_CAP.
+      // We work in months (year * 12) to support the non-integer 18-month interval.
       for (const [id, state] of launchedZeroCost) {
-        const yearsSinceLaunch = year - state.launchYear;
-        const isDueForGrowth   = yearsSinceLaunch > 0 && yearsSinceLaunch % ZERO_COST_GROWTH_INTERVAL === 0;
+        const monthsSinceLaunch = (year - state.launchYear) * 12;
+        const nextGrowthAtMonth = (state.growthCount + 1) * ZERO_COST_GROWTH_MONTHS;
+        const isDueForGrowth    = monthsSinceLaunch >= nextGrowthAtMonth;
         if (isDueForGrowth && state.currentIncome < ZERO_COST_INCOME_CAP) {
           const growth = Math.min(ZERO_COST_GROWTH_STEP, ZERO_COST_INCOME_CAP - state.currentIncome);
           cumulativeMonthlyIncome += growth;
           state.currentIncome     += growth;
+          state.growthCount       += 1;
           launchedZeroCost.set(id, state);
           roadmap.push({
             year,
@@ -427,13 +438,47 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
         break;
       }
 
-      // ── 4. Nothing acquired — show capital-building progress ─────────────
-      if (!yearAcquired) {
-        const nextCfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
+      // ── 4. Index fund compounding ────────────────────────────────────────
+      // After other asset acquisitions, sweep remaining accumulated capital
+      // into index funds (if selected). The balance compounds year-over-year:
+      // each year's contribution adds to the running total, and income is
+      // recalculated as (totalBalance * 0.07) / 12.
+      if (wantsIndexInvesting && capitalAccumulated > 0) {
+        const previousIndexIncome = (indexFundBalance * 0.07) / 12;
+        indexFundBalance += capitalAccumulated;
+        capitalAccumulated = 0;
+        const newIndexIncome = (indexFundBalance * 0.07) / 12;
+        const incomeAdded    = newIndexIncome - previousIndexIncome;
+        cumulativeMonthlyIncome += incomeAdded;
         roadmap.push({
           year,
           calendarYear: currentYear + year,
-          action: `Building toward ${nextCfg.title} (${fmt(capitalAccumulated)} of ${fmt(nextCfg.downPayment)} saved)`,
+          action: `Index Fund balance grows to ${fmt(indexFundBalance)} → ${fmt(newIndexIncome)}/mo`,
+          assetType: 'index_investing',
+          capitalDeployed: indexFundBalance - (indexFundBalance - capitalAccumulated),
+          estimatedMonthlyIncomeAdded: Math.round(incomeAdded),
+          cumulativeMonthlyIncome,
+          remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+        });
+        yearAcquired = true;
+        if (cumulativeMonthlyIncome >= freedomTarget) {
+          projectedFreedomYear = currentYear + year;
+          yearsToFreedom = year;
+          break;
+        }
+      }
+
+      // ── 5. Nothing acquired — show capital-building progress ─────────────
+      if (!yearAcquired) {
+        const nextCfg = capitalAssets.length > 0
+          ? capitalAssets[capitalCycleIndex % capitalAssets.length]
+          : indexInvestingCfg;
+        roadmap.push({
+          year,
+          calendarYear: currentYear + year,
+          action: capitalAssets.length > 0
+            ? `Building toward ${nextCfg.title} (${fmt(capitalAccumulated)} of ${fmt(nextCfg.downPayment)} saved)`
+            : `Accumulating capital for index fund deployment (${fmt(capitalAccumulated)} this year)`,
           assetType: nextCfg.id,
           capitalDeployed: 0,
           estimatedMonthlyIncomeAdded: 0,
