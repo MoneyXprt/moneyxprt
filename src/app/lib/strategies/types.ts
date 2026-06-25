@@ -18,6 +18,8 @@ export interface FinancialSnapshot {
   retirementBalance: number;
   homeEquity: number;
   traditionalIraBalance: number;
+  monthlyRentalIncome: number;
+  monthlyDividendIncome: number;
   hasHsaAvailable: boolean;
   consideringRealEstate: boolean;
   debts: { type: string; balance: number; rate: number; payment: number }[];

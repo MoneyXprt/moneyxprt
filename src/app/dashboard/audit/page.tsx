@@ -26,13 +26,15 @@ interface FormState {
   hasBusinessEntity:  boolean;
   businessRevenue:    string;
   // Step 3 — Financial Position
-  currentTaxPaid:     string;
-  monthlySpend:       string;
-  emergencyFund:      string;
-  retirementBalance:  string;
-  homeEquity:         string;
+  currentTaxPaid:        string;
+  monthlySpend:          string;
+  emergencyFund:         string;
+  retirementBalance:     string;
+  homeEquity:            string;
   traditionalIraBalance: string;
-  hasHsaAvailable:    boolean;
+  monthlyRentalIncome:   string;
+  monthlyDividendIncome: string;
+  hasHsaAvailable:       boolean;
   // Step 4 — Real Estate & Goals
   consideringRealEstate:          boolean;
   plannedPropertyValue:           string;
@@ -46,6 +48,7 @@ const EMPTY_FORM: FormState = {
   dependentsUnder18: '', hasBusinessEntity: false, businessRevenue: '',
   currentTaxPaid: '', monthlySpend: '', emergencyFund: '',
   retirementBalance: '', homeEquity: '', traditionalIraBalance: '',
+  monthlyRentalIncome: '', monthlyDividendIncome: '',
   hasHsaAvailable: false,
   consideringRealEstate: false, plannedPropertyValue: '',
   repsQualified: undefined, employer401kAllowsAfterTax: undefined,
@@ -64,13 +67,15 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     dependentsUnder18:  String(s.dependentsUnder18 || ''),
     hasBusinessEntity:  s.hasBusinessEntity,
     businessRevenue:    String(s.businessRevenue || ''),
-    currentTaxPaid:     String(s.currentTaxPaid || ''),
-    monthlySpend:       String(s.monthlySpend || ''),
-    emergencyFund:      String(s.emergencyFund || ''),
-    retirementBalance:  String(s.retirementBalance || ''),
-    homeEquity:         String(s.homeEquity || ''),
+    currentTaxPaid:        String(s.currentTaxPaid || ''),
+    monthlySpend:          String(s.monthlySpend || ''),
+    emergencyFund:         String(s.emergencyFund || ''),
+    retirementBalance:     String(s.retirementBalance || ''),
+    homeEquity:            String(s.homeEquity || ''),
     traditionalIraBalance: String(s.traditionalIraBalance || ''),
-    hasHsaAvailable:    s.hasHsaAvailable,
+    monthlyRentalIncome:   String(s.monthlyRentalIncome || ''),
+    monthlyDividendIncome: String(s.monthlyDividendIncome || ''),
+    hasHsaAvailable:       s.hasHsaAvailable,
     consideringRealEstate: s.consideringRealEstate,
     plannedPropertyValue: String(s.plannedPropertyValue || ''),
     repsQualified:      s.repsQualified,
@@ -311,9 +316,11 @@ export default function AuditPage() {
         monthlySpend:        n(form.monthlySpend),
         emergencyFund:       n(form.emergencyFund),
         retirementBalance:   n(form.retirementBalance),
-        homeEquity:          n(form.homeEquity),
+        homeEquity:            n(form.homeEquity),
         traditionalIraBalance: n(form.traditionalIraBalance),
-        hasHsaAvailable:     form.hasHsaAvailable,
+        monthlyRentalIncome:   n(form.monthlyRentalIncome),
+        monthlyDividendIncome: n(form.monthlyDividendIncome),
+        hasHsaAvailable:       form.hasHsaAvailable,
         consideringRealEstate: form.consideringRealEstate,
         plannedPropertyValue:  form.consideringRealEstate && form.plannedPropertyValue
           ? n(form.plannedPropertyValue) : undefined,
@@ -509,6 +516,12 @@ export default function AuditPage() {
                 <DollarInput label="Home equity"
                   hint="Estimated current home value minus outstanding mortgage balance."
                   value={form.homeEquity} onChange={v => set('homeEquity', v)} />
+                <DollarInput label="Current monthly rental income"
+                  hint="Income from any rental properties you currently own. Enter 0 if none."
+                  value={form.monthlyRentalIncome} onChange={v => set('monthlyRentalIncome', v)} />
+                <DollarInput label="Current monthly dividend / investment income"
+                  hint="Regular income from stocks, funds, or other investments. Exclude one-time gains."
+                  value={form.monthlyDividendIncome} onChange={v => set('monthlyDividendIncome', v)} />
                 <DollarInput label="Existing traditional IRA balance"
                   hint="Pre-tax IRA balance across all accounts (important for backdoor Roth planning)."
                   value={form.traditionalIraBalance} onChange={v => set('traditionalIraBalance', v)} />

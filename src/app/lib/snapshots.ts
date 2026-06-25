@@ -28,6 +28,8 @@ interface SnapshotRow {
   retirement_balance: number;
   home_equity: number;
   traditional_ira_balance: number;
+  monthly_rental_income: number;
+  monthly_dividend_income: number;
   has_hsa_available: boolean;
   considering_real_estate: boolean;
   planned_property_value: number | null;
@@ -60,6 +62,8 @@ function toRow(
     retirement_balance:            s.retirementBalance,
     home_equity:                   s.homeEquity,
     traditional_ira_balance:       s.traditionalIraBalance,
+    monthly_rental_income:         s.monthlyRentalIncome,
+    monthly_dividend_income:       s.monthlyDividendIncome,
     has_hsa_available:             s.hasHsaAvailable,
     considering_real_estate:       s.consideringRealEstate,
     planned_property_value:        s.plannedPropertyValue ?? null,
@@ -87,6 +91,8 @@ function fromRow(row: SnapshotRow): FinancialSnapshot {
     retirementBalance:           Number(row.retirement_balance),
     homeEquity:                  Number(row.home_equity),
     traditionalIraBalance:       Number(row.traditional_ira_balance),
+    monthlyRentalIncome:         Number(row.monthly_rental_income ?? 0),
+    monthlyDividendIncome:       Number(row.monthly_dividend_income ?? 0),
     hasHsaAvailable:             row.has_hsa_available,
     consideringRealEstate:       row.considering_real_estate,
     plannedPropertyValue:        row.planned_property_value ?? undefined,
