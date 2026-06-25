@@ -206,11 +206,12 @@ export default function PlanResultsPage() {
       const sb = getBrowserSupabaseClient();
       const userId = s.user.id;
 
-      // Fetch all required data in parallel
+      // Fetch each source explicitly — avoids silent index-misalignment bugs
+      // that arise when mixing Supabase queries ({ data }) with plain-returning
+      // helpers (getLatestSnapshot) inside a single Promise.all destructure.
       const [
         { data: profileRow },
-        snapshotResult,
-        { data: assetRows },
+        { data: assetRows, error: assetError },
         { data: constraintsRow },
       ] = await Promise.all([
         sb.from('freedom_profiles')
@@ -219,7 +220,7 @@ export default function PlanResultsPage() {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
-        getLatestSnapshot(),
+        // No .limit(), no .single() — returns every selected asset row for this user
         sb.from('asset_preferences')
           .select('asset_type')
           .eq('user_id', userId)
@@ -229,6 +230,11 @@ export default function PlanResultsPage() {
           .eq('user_id', userId)
           .maybeSingle(),
       ]);
+
+      console.log('[plan/results] assetRows:', assetRows, 'error:', assetError?.message);
+
+      // Fetch snapshot separately (returns FinancialSnapshot | null, not { data })
+      const snapshotResult = await getLatestSnapshot();
 
       // Validate completeness
       const gaps: MissingStepInfo[] = [];
