@@ -329,7 +329,7 @@ export default function AuditPage() {
         debts: [],
       };
       await saveSnapshot(snapshot);
-      router.push('/dashboard/audit/results');
+      router.push('/dashboard/asset-preferences');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed. Please try again.');
       setSaving(false);

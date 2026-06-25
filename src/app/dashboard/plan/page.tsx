@@ -10,10 +10,12 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
  * redirects the user to the earliest incomplete step.
  *
  * Step order:
- *   1. Freedom Vision    → /dashboard/freedom-vision
- *   2. Freedom Number    → /dashboard/freedom-calculator
- *   3. Financial Snapshot → /dashboard/audit
- *   4. (all complete)   → /dashboard/plan/results
+ *   1. Freedom Vision      → /dashboard/freedom-vision
+ *   2. Freedom Number      → /dashboard/freedom-calculator
+ *   3. Financial Snapshot  → /dashboard/audit
+ *   4. Asset Preferences   → /dashboard/asset-preferences
+ *   5. Constraints         → /dashboard/constraints
+ *   6. (all complete)      → /dashboard/plan/results
  */
 export default function PlanFlowController() {
   const router = useRouter();
@@ -52,7 +54,26 @@ export default function PlanFlowController() {
       const snapshotDone = (count ?? 0) > 0;
       if (!snapshotDone) { router.replace('/dashboard/audit'); return; }
 
-      // All three done → show the results/summary
+      // Step 4 — Asset Preferences: complete when at least one row exists
+      const { count: assetCount } = await sb
+        .from('asset_preferences')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+
+      const assetsDone = (assetCount ?? 0) > 0;
+      if (!assetsDone) { router.replace('/dashboard/asset-preferences'); return; }
+
+      // Step 5 — Constraints: complete when a row exists
+      const { data: constraints } = await sb
+        .from('user_constraints')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const constraintsDone = !!constraints;
+      if (!constraintsDone) { router.replace('/dashboard/constraints'); return; }
+
+      // All five done → generate and show the plan
       router.replace('/dashboard/plan/results');
     }
 
