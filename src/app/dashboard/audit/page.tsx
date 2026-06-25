@@ -19,12 +19,26 @@ interface FormState {
   bonusDeferred:      string;   // amount deferred (user input)
   income1099:         string;
   spouseWorks:        boolean;
+  // Step 1 — Spouse income details (shown when spouseWorks = true)
+  spouseIncomeType:              'w2' | 'self_employment' | 'both' | '';
+  spouseW2Income:                string;
+  spouseBusinessRevenue:         string;
+  spouseBusinessNetProfit:       string;
+  spouseHoursPerWeekInBusiness:  string;
+  spouseState:                   string;
   // Step 2 — Household
   filingStatus:       'single' | 'mfj';
   state:              string;
   dependentsUnder18:  string;
   hasBusinessEntity:  boolean;
   businessRevenue:    string;
+  // Step 2 — Primary business details
+  primaryBusinessNetProfit:       string;
+  primaryBusinessType:            string;
+  primaryHoursPerWeekInBusiness:  string;
+  // Step 2 — Spouse business entity (shown when hasBusinessEntity && spouseWorks)
+  spouseHasSeparateBusiness:  boolean;
+  spouseBusinessType:         string;
   // Step 3 — Financial Position
   currentTaxPaid:        string;
   monthlySpend:          string;
@@ -44,8 +58,12 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   w2Income: '', bonusIncome: '', bonusDefers: false, bonusDeferred: '', income1099: '', spouseWorks: false,
+  spouseIncomeType: '', spouseW2Income: '', spouseBusinessRevenue: '', spouseBusinessNetProfit: '',
+  spouseHoursPerWeekInBusiness: '', spouseState: 'CA',
   filingStatus: 'mfj', state: 'CA',
   dependentsUnder18: '', hasBusinessEntity: false, businessRevenue: '',
+  primaryBusinessNetProfit: '', primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
+  spouseHasSeparateBusiness: false, spouseBusinessType: '',
   currentTaxPaid: '', monthlySpend: '', emergencyFund: '',
   retirementBalance: '', homeEquity: '', traditionalIraBalance: '',
   monthlyRentalIncome: '', monthlyDividendIncome: '',
@@ -62,11 +80,24 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     bonusDeferred:      String(s.bonusDeferred || ''),
     income1099:         String(s.income1099 || ''),
     spouseWorks:        s.spouseWorks,
+    spouseIncomeType:             s.spouseW2Income > 0 && s.spouseBusinessRevenue > 0 ? 'both'
+                                : s.spouseW2Income > 0 ? 'w2'
+                                : s.spouseBusinessRevenue > 0 ? 'self_employment' : '',
+    spouseW2Income:               String(s.spouseW2Income || ''),
+    spouseBusinessRevenue:        String(s.spouseBusinessRevenue || ''),
+    spouseBusinessNetProfit:      String(s.spouseBusinessNetProfit || ''),
+    spouseHoursPerWeekInBusiness: String(s.spouseHoursPerWeekInBusiness || ''),
+    spouseState:                  s.state,
     filingStatus:       s.filingStatus,
     state:              s.state,
     dependentsUnder18:  String(s.dependentsUnder18 || ''),
     hasBusinessEntity:  s.hasBusinessEntity,
     businessRevenue:    String(s.businessRevenue || ''),
+    primaryBusinessNetProfit:      String(s.primaryBusinessNetProfit || ''),
+    primaryBusinessType:           s.primaryBusinessType || '',
+    primaryHoursPerWeekInBusiness: String(s.primaryHoursPerWeekInBusiness || ''),
+    spouseHasSeparateBusiness:     s.spouseBusinessType !== '',
+    spouseBusinessType:            s.spouseBusinessType || '',
     currentTaxPaid:        String(s.currentTaxPaid || ''),
     monthlySpend:          String(s.monthlySpend || ''),
     emergencyFund:         String(s.emergencyFund || ''),
@@ -310,8 +341,21 @@ export default function AuditPage() {
         filingStatus:        form.filingStatus,
         state:               form.state,
         dependentsUnder18:   n(form.dependentsUnder18),
-        hasBusinessEntity:   form.hasBusinessEntity,
-        businessRevenue:     form.hasBusinessEntity ? n(form.businessRevenue) : 0,
+        hasBusinessEntity:              form.hasBusinessEntity,
+        businessRevenue:               form.hasBusinessEntity ? n(form.businessRevenue) : 0,
+        primaryBusinessNetProfit:      form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
+        primaryBusinessType:           form.hasBusinessEntity ? form.primaryBusinessType : '',
+        primaryHoursPerWeekInBusiness: form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
+        spouseW2Income:                form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
+                                         ? n(form.spouseW2Income) : 0,
+        spouseBusinessRevenue:         form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
+                                         ? n(form.spouseBusinessRevenue) : 0,
+        spouseBusinessNetProfit:       form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
+                                         ? n(form.spouseBusinessNetProfit) : 0,
+        spouseBusinessType:            form.spouseWorks && form.spouseHasSeparateBusiness
+                                         ? form.spouseBusinessType : '',
+        spouseHoursPerWeekInBusiness:  form.spouseWorks
+                                         ? n(form.spouseHoursPerWeekInBusiness) : 0,
         currentTaxPaid:      n(form.currentTaxPaid),
         monthlySpend:        n(form.monthlySpend),
         emergencyFund:       n(form.emergencyFund),
@@ -457,7 +501,77 @@ export default function AuditPage() {
                   value={form.income1099} onChange={v => set('income1099', v)} />
                 <Toggle label="Does your spouse work?"
                   hint="Includes full-time, part-time, or self-employment income."
-                  value={form.spouseWorks} onChange={v => set('spouseWorks', v)} />
+                  value={form.spouseWorks} onChange={v => {
+                    set('spouseWorks', v);
+                    if (!v) { set('spouseIncomeType', ''); set('spouseW2Income', ''); set('spouseBusinessRevenue', ''); set('spouseBusinessNetProfit', ''); set('spouseHoursPerWeekInBusiness', ''); }
+                  }} />
+
+                {form.spouseWorks && (
+                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
+                    <p className="text-xs font-semibold text-gray-600">Spouse Income</p>
+
+                    {/* Income type radio */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-2">Spouse income type</label>
+                      <div className="flex flex-col gap-2">
+                        {([
+                          { value: 'w2',              label: 'W-2 Employment' },
+                          { value: 'self_employment',  label: 'Self-Employment or Business' },
+                          { value: 'both',             label: 'Both' },
+                        ] as const).map(opt => (
+                          <button key={opt.value} type="button"
+                            onClick={() => set('spouseIncomeType', opt.value)}
+                            className={`flex items-center gap-2.5 text-left px-3.5 py-2.5 rounded-xl border text-xs transition ${
+                              form.spouseIncomeType === opt.value
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}>
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              form.spouseIncomeType === opt.value ? 'border-indigo-500' : 'border-gray-300'
+                            }`}>
+                              {form.spouseIncomeType === opt.value && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
+                            </div>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* W2 income */}
+                    {(form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both') && (
+                      <DollarInput label="Spouse W-2 income"
+                        hint="Gross annual salary before taxes."
+                        value={form.spouseW2Income} onChange={v => set('spouseW2Income', v)} />
+                    )}
+
+                    {/* Self-employment details */}
+                    {(form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both') && (
+                      <>
+                        <DollarInput label="Spouse business gross revenue"
+                          hint="Total revenue before expenses."
+                          value={form.spouseBusinessRevenue} onChange={v => set('spouseBusinessRevenue', v)} />
+                        <DollarInput label="Spouse business net profit"
+                          hint="After expenses — this is what gets taxed."
+                          value={form.spouseBusinessNetProfit} onChange={v => set('spouseBusinessNetProfit', v)} />
+                      </>
+                    )}
+
+                    {/* Hours per week — always shown when spouse works */}
+                    <DollarInput label="Spouse hours per week in business / work"
+                      hint="Important for REPS eligibility calculation — total non-real-estate working hours."
+                      value={form.spouseHoursPerWeekInBusiness} onChange={v => set('spouseHoursPerWeekInBusiness', v)}
+                      placeholder="40" />
+
+                    {/* Spouse state */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Spouse state (if different)</label>
+                      <select value={form.spouseState} onChange={e => set('spouseState', e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        {US_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -485,14 +599,68 @@ export default function AuditPage() {
                   hint="Children or other dependents you claim."
                   value={form.dependentsUnder18} onChange={v => set('dependentsUnder18', v)}
                   placeholder="0" />
-                <Toggle label="Do you own a business or LLC?"
+                <Toggle label="Do you or your spouse own a business or LLC?"
                   hint="Includes sole proprietorships, single-member LLCs, S-Corps, or partnerships."
                   value={form.hasBusinessEntity} onChange={v => set('hasBusinessEntity', v)} />
                 {form.hasBusinessEntity && (
-                  <div className="pl-4 border-l-2 border-indigo-100">
-                    <DollarInput label="Annual business revenue"
-                      hint="Gross revenue before expenses."
+                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
+                    <p className="text-xs font-semibold text-gray-600 pt-1">Your Business</p>
+                    <DollarInput label="Business gross revenue"
+                      hint="Total revenue before expenses."
                       value={form.businessRevenue} onChange={v => set('businessRevenue', v)} />
+                    <DollarInput label="Business net profit"
+                      hint="After expenses — this is what gets taxed."
+                      value={form.primaryBusinessNetProfit} onChange={v => set('primaryBusinessNetProfit', v)} />
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Business type</label>
+                      <select value={form.primaryBusinessType} onChange={e => set('primaryBusinessType', e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        <option value="">Select type…</option>
+                        <option value="sole_prop">Sole Proprietorship</option>
+                        <option value="smllc">Single-Member LLC</option>
+                        <option value="scorp">S-Corp</option>
+                        <option value="partnership">Partnership</option>
+                      </select>
+                    </div>
+                    <DollarInput label="Hours per week you spend on this business"
+                      hint="Used to size your Solo 401k and S-Corp election strategies."
+                      value={form.primaryHoursPerWeekInBusiness} onChange={v => set('primaryHoursPerWeekInBusiness', v)}
+                      placeholder="10" />
+
+                    {form.spouseWorks && (
+                      <>
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs font-semibold text-gray-600 mb-3">Spouse Business</p>
+                          <Toggle label="Does your spouse have a separate business?"
+                            value={form.spouseHasSeparateBusiness}
+                            onChange={v => { set('spouseHasSeparateBusiness', v); if (!v) set('spouseBusinessType', ''); }} />
+                        </div>
+                        {form.spouseHasSeparateBusiness && (
+                          <div className="space-y-4">
+                            <DollarInput label="Spouse business gross revenue"
+                              value={form.spouseBusinessRevenue} onChange={v => set('spouseBusinessRevenue', v)} />
+                            <DollarInput label="Spouse business net profit"
+                              hint="After expenses."
+                              value={form.spouseBusinessNetProfit} onChange={v => set('spouseBusinessNetProfit', v)} />
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Spouse business type</label>
+                              <select value={form.spouseBusinessType} onChange={e => set('spouseBusinessType', e.target.value)}
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                                <option value="">Select type…</option>
+                                <option value="sole_prop">Sole Proprietorship</option>
+                                <option value="smllc">Single-Member LLC</option>
+                                <option value="scorp">S-Corp</option>
+                                <option value="partnership">Partnership</option>
+                              </select>
+                            </div>
+                            <DollarInput label="Hours per week spouse spends on this business"
+                              hint="Used to calculate REPS eligibility."
+                              value={form.spouseHoursPerWeekInBusiness} onChange={v => set('spouseHoursPerWeekInBusiness', v)}
+                              placeholder="20" />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </>

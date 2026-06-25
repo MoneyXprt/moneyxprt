@@ -22,6 +22,14 @@ interface SnapshotRow {
   dependents_under_18: number;
   has_business_entity: boolean;
   business_revenue: number;
+  primary_business_net_profit: number;
+  primary_business_type: string;
+  primary_hours_per_week_in_business: number;
+  spouse_w2_income: number;
+  spouse_business_revenue: number;
+  spouse_business_net_profit: number;
+  spouse_business_type: string;
+  spouse_hours_per_week_in_business: number;
   current_tax_paid: number;
   monthly_spend: number;
   emergency_fund: number;
@@ -54,8 +62,16 @@ function toRow(
     filing_status:                 s.filingStatus,
     state:                         s.state,
     dependents_under_18:           s.dependentsUnder18,
-    has_business_entity:           s.hasBusinessEntity,
-    business_revenue:              s.businessRevenue,
+    has_business_entity:                s.hasBusinessEntity,
+    business_revenue:                   s.businessRevenue,
+    primary_business_net_profit:        s.primaryBusinessNetProfit,
+    primary_business_type:              s.primaryBusinessType,
+    primary_hours_per_week_in_business: s.primaryHoursPerWeekInBusiness,
+    spouse_w2_income:                   s.spouseW2Income,
+    spouse_business_revenue:            s.spouseBusinessRevenue,
+    spouse_business_net_profit:         s.spouseBusinessNetProfit,
+    spouse_business_type:               s.spouseBusinessType,
+    spouse_hours_per_week_in_business:  s.spouseHoursPerWeekInBusiness,
     current_tax_paid:              s.currentTaxPaid,
     monthly_spend:                 s.monthlySpend,
     emergency_fund:                s.emergencyFund,
@@ -83,8 +99,16 @@ function fromRow(row: SnapshotRow): FinancialSnapshot {
     filingStatus:                row.filing_status as 'single' | 'mfj',
     state:                       row.state,
     dependentsUnder18:           row.dependents_under_18,
-    hasBusinessEntity:           row.has_business_entity,
-    businessRevenue:             Number(row.business_revenue),
+    hasBusinessEntity:                row.has_business_entity,
+    businessRevenue:                  Number(row.business_revenue),
+    primaryBusinessNetProfit:         Number(row.primary_business_net_profit ?? 0),
+    primaryBusinessType:              String(row.primary_business_type ?? ''),
+    primaryHoursPerWeekInBusiness:    Number(row.primary_hours_per_week_in_business ?? 0),
+    spouseW2Income:                   Number(row.spouse_w2_income ?? 0),
+    spouseBusinessRevenue:            Number(row.spouse_business_revenue ?? 0),
+    spouseBusinessNetProfit:          Number(row.spouse_business_net_profit ?? 0),
+    spouseBusinessType:               String(row.spouse_business_type ?? ''),
+    spouseHoursPerWeekInBusiness:     Number(row.spouse_hours_per_week_in_business ?? 0),
     currentTaxPaid:              Number(row.current_tax_paid),
     monthlySpend:                Number(row.monthly_spend),
     emergencyFund:               Number(row.emergency_fund),

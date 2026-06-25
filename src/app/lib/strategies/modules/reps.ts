@@ -60,7 +60,38 @@ export const reps: Strategy = {
       };
     }
 
-    // ── Gate 2: both spouses work → LOCKED ─────────────────────────────────
+    // ── Gate 2: spouse works AND business hours are known → VERIFY ──────────
+    // If we have the spouse's actual non-RE work hours we can show the exact
+    // math rather than a blanket LOCKED. REPS requires RE hours > 50% of all
+    // work hours, which simplifies to: RE hours must exceed non-RE hours.
+    if (s.spouseWorks && s.spouseHoursPerWeekInBusiness > 0) {
+      const annualNonREHours    = Math.round(s.spouseHoursPerWeekInBusiness * 52);
+      // 50% test: RE hours must EXCEED non-RE hours.
+      // 750-hour test: RE hours must be > 750.
+      // Binding constraint = the larger of the two.
+      const minREHoursFor50pct  = annualNonREHours + 1;
+      const minREHoursRequired  = Math.max(750, minREHoursFor50pct);
+      const bindingTest         = minREHoursFor50pct >= 750 ? '50% test' : '750-hour test';
+
+      return {
+        ...base,
+        state: 'VERIFY',
+        estimatedAnnualValue: 0,
+        reason:
+          `Your spouse spends ${s.spouseHoursPerWeekInBusiness} hours/week ` +
+          `(${annualNonREHours} hours/year) in their business. ` +
+          `REPS requires real estate hours to exceed 50% of total working hours ` +
+          `(IRC §469(c)(7)(B)(ii)). With ${annualNonREHours} annual business hours, ` +
+          `the ${bindingTest} requires at least ${minREHoursRequired} real estate hours per year. ` +
+          `This is achievable but must be documented with contemporaneous time logs.`,
+        blockedBy:
+          `spouseHoursPerWeekInBusiness: to satisfy the 50% test, real estate hours must ` +
+          `exceed ${annualNonREHours} hours/year. To satisfy both tests, ` +
+          `${minREHoursRequired} real estate hours/year are required.`,
+      };
+    }
+
+    // ── Gate 2b: spouse works but hours unknown → LOCKED ────────────────────
     if (s.spouseWorks) {
       return {
         ...base,
@@ -73,9 +104,9 @@ export const reps: Strategy = {
           'employment hours count against the 50% threshold — making REPS structurally ' +
           'unavailable to dual-income W-2 households without exceptional circumstances.',
         unlockCondition:
-          'REPS becomes viable when one spouse leaves traditional employment, reducing ' +
-          'their non-real-estate hours so that 750+ real estate hours represent more than ' +
-          '50% of their total working time for the year.',
+          'Enter your spouse\'s business hours per week in the financial snapshot — ' +
+          'if their total non-real-estate hours are low enough, REPS may still be achievable. ' +
+          'REPS becomes clearly viable when one spouse leaves traditional employment.',
         blockedBy: 'spouseWorks',
       };
     }

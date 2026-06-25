@@ -12,6 +12,14 @@ export interface FinancialSnapshot {
   dependentsUnder18: number;
   hasBusinessEntity: boolean;
   businessRevenue: number;
+  primaryBusinessNetProfit: number;
+  primaryBusinessType: string;
+  primaryHoursPerWeekInBusiness: number;
+  spouseW2Income: number;
+  spouseBusinessRevenue: number;
+  spouseBusinessNetProfit: number;
+  spouseBusinessType: string;
+  spouseHoursPerWeekInBusiness: number;
   currentTaxPaid: number;
   monthlySpend: number;
   emergencyFund: number;
