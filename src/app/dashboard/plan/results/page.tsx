@@ -178,11 +178,13 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
 type MissingStepInfo = { label: string; href: string };
 
 export default function PlanResultsPage() {
-  const [session, setSession]   = useState<Session | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [plan, setPlan]         = useState<GeneratedPlan | null>(null);
-  const [missing, setMissing]   = useState<MissingStepInfo[]>([]);
-  const [error, setError]       = useState<string | null>(null);
+  const [session, setSession]       = useState<Session | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [plan, setPlan]             = useState<GeneratedPlan | null>(null);
+  const [missing, setMissing]       = useState<MissingStepInfo[]>([]);
+  const [error, setError]           = useState<string | null>(null);
+  const [narrative, setNarrative]   = useState<string | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
 
   useEffect(() => {
     const sb = getBrowserSupabaseClient();
@@ -289,6 +291,30 @@ export default function PlanResultsPage() {
 
       // Save async — don't block rendering on save failure
       savePlan(generated, userId).catch(e => console.warn('savePlan failed:', e));
+
+      // Narrative: fire async, never block plan display
+      setNarrativeLoading(true);
+      fetch('/api/generate-narrative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          freedomVision:           profileRow!.vision_text ?? '',
+          freedomNumber:           generated.freedomGap.freedomNumberMonthly,
+          currentPassiveIncome:    generated.freedomGap.currentPassiveMonthly,
+          gapMonthly:              generated.freedomGap.gapMonthly,
+          projectedFreedomYear:    generated.freedomGap.projectedFreedomYear,
+          deployableCapitalPerYear: generated.deployableCapitalPerYear,
+          taxStrategyAnnualValue:  generated.taxStrategyStack.annualValue,
+          phases:                  generated.phases,
+          assetRoadmap:            generated.assetRoadmap.slice(0, 5),
+          freedomType:             profileRow!.freedom_type,
+          targetFreeAge:           Number(profileRow!.target_free_age),
+        }),
+      })
+        .then(r => r.json())
+        .then(({ narrative: n }: { narrative: string | null }) => setNarrative(n))
+        .catch(() => setNarrative(null))
+        .finally(() => setNarrativeLoading(false));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate your plan.');
     } finally {
@@ -402,6 +428,37 @@ export default function PlanResultsPage() {
               </div>
             )}
           </div>
+
+          {/* ── Narrative card ────────────────────────────────────────── */}
+          {narrativeLoading && (
+            <div className="bg-white rounded-2xl border-l-4 border-emerald-500 border border-gray-100 shadow-sm px-6 py-5 space-y-3">
+              <div className="h-3.5 rounded-full bg-gray-100 animate-pulse w-1/3" />
+              <div className="space-y-2">
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse" />
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-11/12" />
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-5/6" />
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-full" />
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-10/12" />
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-11/12" />
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-11/12" />
+                <div className="h-3 rounded-full bg-gray-100 animate-pulse w-4/6" />
+              </div>
+            </div>
+          )}
+          {!narrativeLoading && narrative && (
+            <div className="bg-white rounded-2xl border-l-4 border-emerald-500 border border-gray-100 shadow-sm px-6 py-5">
+              <h2 className="text-sm font-semibold text-gray-900 mb-4">Your Plan, In Plain Language</h2>
+              <div className="space-y-4">
+                {narrative.split('\n\n').filter(p => p.trim()).map((paragraph, i) => (
+                  <p key={i} className="text-sm text-gray-700 leading-relaxed">{paragraph.trim()}</p>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Section 2: Phase cards ────────────────────────────────── */}
           <div>
