@@ -1,25 +1,82 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface PlanProgress {
-  visionDone:   boolean;
-  numberDone:   boolean;
-  snapshotDone: boolean;
+interface PlanAction {
+  text: string;
+  priority: 'high' | 'medium' | 'low';
+  annualValue?: number;
 }
 
-const PLAN_STEPS: { key: keyof PlanProgress | 'assets' | 'constraints'; label: string }[] = [
-  { key: 'visionDone',   label: 'Freedom Vision' },
-  { key: 'numberDone',   label: 'Freedom Number' },
-  { key: 'snapshotDone', label: 'Financial Snapshot' },
-  { key: 'assets',       label: 'Asset Preferences' },
-  { key: 'constraints',  label: 'Constraints' },
-];
+interface PlanPhase {
+  number: number;
+  title: string;
+  status: 'active' | 'pending';
+  reason: string;
+  actions: PlanAction[];
+}
+
+interface TaxStrategy {
+  id: string;
+  name: string;
+  estimatedAnnualValue: number;
+}
+
+interface PlanData {
+  freedomGap: {
+    freedomNumberMonthly: number;
+    currentPassiveMonthly: number;
+    gapMonthly: number;
+    projectedFreedomYear: number;
+    yearsToFreedom: number;
+  };
+  phases: PlanPhase[];
+  taxStrategyStack: {
+    annualValue: number;
+    strategies: TaxStrategy[];
+    addedToDeployableCapital: number;
+  };
+  createdAt: string;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  return `$${Math.round(n).toLocaleString('en-US')}`;
+}
+
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+
+function getNextAction(phases: PlanPhase[]): PlanAction | null {
+  for (const phase of phases) {
+    if (phase.status !== 'active') continue;
+    const sorted = [...phase.actions].sort(
+      (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
+    );
+    if (sorted[0]) return sorted[0];
+  }
+  return null;
+}
+
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+const REPS_TARGET = 750;
+const currentYear = new Date().getFullYear();
+const nowMonth    = new Date().getMonth(); // 0-indexed; 5 = June
+
+function repsStatus(hours: number): { label: string; color: string } {
+  if (hours >= REPS_TARGET)      return { label: 'Complete', color: 'text-emerald-600' };
+  if (nowMonth >= 6 && hours < REPS_TARGET / 2)
+                                  return { label: 'Behind',   color: 'text-amber-600' };
+  return                               { label: 'On track',  color: 'text-indigo-600' };
+}
 
 // ─── Auth gate ────────────────────────────────────────────────────────────────
 
@@ -78,185 +135,300 @@ function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
   );
 }
 
-// ─── Progress step row ────────────────────────────────────────────────────────
+// ─── No-plan CTA ─────────────────────────────────────────────────────────────
 
-function StepRow({ label, done, locked }: { label: string; done: boolean; locked?: boolean }) {
+function NoPlanCard() {
   return (
-    <div className="flex items-center gap-3 py-3">
-      {done ? (
-        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-      ) : locked ? (
-        <div className="w-6 h-6 rounded-full border-2 border-gray-200 flex items-center justify-center shrink-0">
-          <svg className="w-3 h-3 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-          </svg>
-        </div>
-      ) : (
-        <div className="w-6 h-6 rounded-full border-2 border-emerald-300 flex items-center justify-center shrink-0">
-          <div className="w-2 h-2 rounded-full bg-emerald-400" />
-        </div>
-      )}
-      <span className={`text-sm flex-1 ${done ? 'text-gray-900 font-medium' : locked ? 'text-gray-400' : 'text-gray-700'}`}>
-        {label}
-      </span>
-      {locked && <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wide">Soon</span>}
-      {!done && !locked && <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide">Next</span>}
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mb-4">
+        <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.82m2.56-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+        </svg>
+      </div>
+      <h2 className="text-lg font-bold text-gray-900">Build your freedom plan</h2>
+      <p className="mt-1 text-sm text-gray-500 mb-5 leading-relaxed">
+        Complete your financial profile and we&apos;ll generate a personalised roadmap to financial freedom — with a projected year, asset roadmap, and tax strategy stack.
+      </p>
+      <Link href="/dashboard/plan"
+        className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition">
+        Build my freedom plan →
+      </Link>
     </div>
   );
 }
 
-// ─── Plan progress card ───────────────────────────────────────────────────────
+// ─── Freedom Gap Hero ─────────────────────────────────────────────────────────
 
-function PlanCard({ progress, loading }: { progress: PlanProgress | null; loading: boolean }) {
-  const steps = [
-    progress?.visionDone ?? false,
-    progress?.numberDone ?? false,
-    progress?.snapshotDone ?? false,
-    false, // assets — not built
-    false, // constraints — not built
-  ];
-  const doneCount = steps.filter(Boolean).length;
-  const hasStarted = doneCount > 0;
-  const allCoreComplete = (progress?.visionDone && progress?.numberDone && progress?.snapshotDone) ?? false;
+function FreedomGapHero({ plan }: { plan: PlanData }) {
+  const { freedomNumberMonthly, currentPassiveMonthly, gapMonthly, projectedFreedomYear, yearsToFreedom } = plan.freedomGap;
+  const pct = freedomNumberMonthly > 0
+    ? Math.min(100, Math.round((currentPassiveMonthly / freedomNumberMonthly) * 100))
+    : 0;
+
+  return (
+    <div className="bg-emerald-600 rounded-2xl p-6 text-white">
+      <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest mb-4">Your Freedom Plan</p>
+
+      <div className="space-y-2 mb-5">
+        {[
+          { label: 'Freedom Number',       value: `${fmt(freedomNumberMonthly)}/mo`,    cls: 'text-white font-bold' },
+          { label: 'Current Passive Income', value: `${fmt(currentPassiveMonthly)}/mo`, cls: 'text-emerald-100 font-semibold' },
+          { label: 'Gap to Close',         value: `${fmt(gapMonthly)}/mo`,               cls: 'text-amber-300 font-bold' },
+        ].map(row => (
+          <div key={row.label} className="flex items-center justify-between">
+            <span className="text-sm text-emerald-200">{row.label}</span>
+            <span className={`text-base tabular-nums ${row.cls}`}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Projected year — dominant element */}
+      <div className="text-center py-4">
+        <p className="text-6xl font-extrabold tracking-tight leading-none">
+          {yearsToFreedom === 0 ? '🎯' : projectedFreedomYear}
+        </p>
+        <p className="text-emerald-300 text-sm mt-1.5">
+          {yearsToFreedom === 0 ? 'Freedom achieved.' : `Projected freedom year — ${yearsToFreedom} year${yearsToFreedom !== 1 ? 's' : ''} away`}
+        </p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mt-2">
+        <div className="h-2 bg-emerald-700/60 rounded-full overflow-hidden">
+          <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-xs text-emerald-300 mt-1.5 text-center">{pct}% of your freedom gap closed</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Next action card ─────────────────────────────────────────────────────────
+
+function NextActionCard({ action }: { action: PlanAction }) {
+  const priorityColor = action.priority === 'high' ? 'bg-red-500' : action.priority === 'medium' ? 'bg-amber-400' : 'bg-gray-300';
+  return (
+    <div className="bg-white rounded-2xl border-l-4 border-indigo-500 border border-gray-100 shadow-sm px-5 py-4">
+      <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2">Your next action</p>
+      <div className="flex items-start gap-2.5">
+        <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1 ${priorityColor}`} />
+        <p className="text-sm text-gray-800 leading-relaxed font-medium">{action.text}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Phase card ───────────────────────────────────────────────────────────────
+
+function PhaseCard({ phase }: { phase: PlanPhase }) {
+  const topAction = [...phase.actions].sort(
+    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
+  )[0];
+
+  const statusStyles: Record<string, string> = {
+    active:  'bg-emerald-100 text-emerald-700',
+    pending: 'bg-gray-100 text-gray-500',
+  };
+
+  return (
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden ${phase.status === 'pending' ? 'opacity-70' : ''}`}>
+      <div className="px-4 py-3.5 border-b border-gray-50 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+            {phase.number}
+          </div>
+          <p className="text-sm font-semibold text-gray-900">{phase.title}</p>
+        </div>
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0 ${statusStyles[phase.status] ?? statusStyles.pending}`}>
+          {phase.status}
+        </span>
+      </div>
+      {topAction && (
+        <div className="px-4 py-3 flex items-start gap-2">
+          <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${{
+            high: 'bg-red-400', medium: 'bg-amber-400', low: 'bg-gray-300',
+          }[topAction.priority]}`} />
+          <p className="text-xs text-gray-600 leading-relaxed">{topAction.text}</p>
+          {topAction.annualValue ? (
+            <span className="ml-auto text-xs font-bold text-emerald-700 shrink-0 tabular-nums">{fmt(topAction.annualValue)}</span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tax strategy panel ───────────────────────────────────────────────────────
+
+function TaxStrategyPanel({ stack }: { stack: PlanData['taxStrategyStack'] }) {
+  const top3 = stack.strategies
+    .sort((a, b) => b.estimatedAnnualValue - a.estimatedAnnualValue)
+    .slice(0, 3);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Header band */}
-      <div className="bg-emerald-600 px-5 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-emerald-200 text-xs font-semibold uppercase tracking-wide mb-1">
-              {hasStarted ? `Step ${doneCount} of 5 complete` : 'Start here'}
-            </p>
-            <h2 className="text-white text-xl font-bold leading-tight">Build Your Freedom Plan</h2>
-            <p className="text-emerald-300 text-sm mt-0.5">Takes about 15 minutes</p>
-          </div>
-          <div className="shrink-0 w-10 h-10 rounded-xl bg-emerald-500/60 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.82m2.56-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-            </svg>
-          </div>
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            Adding {fmt(stack.addedToDeployableCapital)}/yr to your capital
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">Tax savings working as your investment engine</p>
         </div>
-
-        {/* Progress bar */}
-        {!loading && (
-          <div className="mt-4 flex gap-1">
-            {steps.map((done, i) => (
-              <div key={i}
-                className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-                  done ? 'bg-white' : i === doneCount && i < 3 ? 'bg-emerald-400/60' : 'bg-emerald-700/50'
-                }`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Step list */}
-      <div className="px-5 divide-y divide-gray-50">
-        {loading ? (
-          <div className="py-6 flex flex-col gap-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-4 rounded-full bg-gray-100 animate-pulse" style={{ width: `${60 + i * 10}%` }} />
-            ))}
-          </div>
-        ) : (
-          PLAN_STEPS.map((step, i) => {
-            const done = i < 3 ? steps[i] : false;
-            const locked = i >= 3;
-            return <StepRow key={step.key} label={step.label} done={done} locked={locked} />;
-          })
-        )}
-      </div>
-
-      {/* CTA */}
-      <div className="px-5 pb-5 pt-4">
-        <Link
-          href="/dashboard/plan"
-          className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition"
-        >
-          {allCoreComplete ? 'View your plan' : hasStarted ? 'Continue your plan' : 'Start my plan'}
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
+        <Link href="/dashboard/audit/results"
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition shrink-0 ml-3">
+          Full audit →
         </Link>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {top3.map(s => (
+          <div key={s.id} className="flex items-center justify-between px-5 py-3">
+            <span className="text-sm text-gray-700 truncate mr-3">{s.name}</span>
+            <span className="text-sm font-bold text-emerald-700 tabular-nums shrink-0">{fmt(s.estimatedAnnualValue)}/yr</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// ─── Quick-link card ──────────────────────────────────────────────────────────
+// ─── REPS tracker ─────────────────────────────────────────────────────────────
 
-function QuickLink({ href, label, sublabel, icon }: {
-  href: string; label: string; sublabel: string; icon: React.ReactNode;
-}) {
+function REPSTracker({ hoursLogged }: { hoursLogged: number }) {
+  const pct    = Math.min(100, Math.round((hoursLogged / REPS_TARGET) * 100));
+  const status = repsStatus(hoursLogged);
+
   return (
-    <Link href={href}
-      className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3.5 hover:bg-gray-50 hover:border-gray-200 transition group">
-      <div className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center shrink-0 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition">
-        {icon}
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">REPS Hours — {currentYear}</p>
+          <p className="text-xs text-gray-400">750 hours required for material participation</p>
+        </div>
+        <span className={`text-xs font-bold ${status.color}`}>{status.label}</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{label}</p>
-        <p className="text-xs text-gray-400 truncate">{sublabel}</p>
+      <div className="flex items-end gap-2 mb-2">
+        <span className="text-3xl font-extrabold text-gray-900 tabular-nums leading-none">
+          {Math.round(hoursLogged)}
+        </span>
+        <span className="text-sm text-gray-400 mb-0.5">of {REPS_TARGET} hrs</span>
       </div>
-      <svg className="w-4 h-4 text-gray-300 shrink-0 group-hover:text-indigo-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-      </svg>
-    </Link>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-indigo-500' : 'bg-amber-400'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-gray-400 mt-1.5">{pct}% of annual target</p>
+      <Link href="/dashboard/logs"
+        className="mt-3 flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition">
+        Log hours →
+      </Link>
+    </div>
+  );
+}
+
+// ─── Quick actions ────────────────────────────────────────────────────────────
+
+function QuickActions() {
+  const actions = [
+    { label: 'Update my numbers', sub: 'Keep your plan current', href: '/dashboard/audit',         icon: '✏️' },
+    { label: 'Log REPS hours',    sub: 'Material participation log', href: '/dashboard/logs',        icon: '⏱️' },
+    { label: 'Full plan view',    sub: 'Roadmap & tax strategies', href: '/dashboard/plan/results', icon: '📋' },
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {actions.map(a => (
+        <Link key={a.href} href={a.href}
+          className="flex flex-col items-center text-center gap-1.5 bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-4 hover:bg-gray-50 hover:border-gray-200 transition active:scale-95">
+          <span className="text-xl">{a.icon}</span>
+          <p className="text-xs font-semibold text-gray-900 leading-tight">{a.label}</p>
+          <p className="text-[10px] text-gray-400 leading-tight">{a.sub}</p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function Skeleton() {
+  return (
+    <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+      <div className="h-6 rounded-full bg-gray-200 animate-pulse w-1/3" />
+      <div className="h-64 rounded-2xl bg-emerald-100 animate-pulse" />
+      <div className="h-16 rounded-2xl bg-gray-100 animate-pulse" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="h-24 rounded-2xl bg-gray-100 animate-pulse" />
+        <div className="h-24 rounded-2xl bg-gray-100 animate-pulse" />
+      </div>
+    </div>
   );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardHome() {
-  const [session, setSession]           = useState<Session | null>(null);
+  const [session, setSession]     = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-  const [progress, setProgress]         = useState<PlanProgress | null>(null);
-  const [progressLoading, setProgressLoading] = useState(true);
-
-  const loadProgress = useCallback(async (userId: string) => {
-    const sb = getBrowserSupabaseClient();
-    setProgressLoading(true);
-
-    const [{ data: profile }, { count: snapCount }] = await Promise.all([
-      sb.from('freedom_profiles')
-        .select('freedom_type, freedom_number_monthly')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      sb.from('financial_snapshots')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
-    ]);
-
-    setProgress({
-      visionDone:   !!profile?.freedom_type,
-      numberDone:   Number(profile?.freedom_number_monthly ?? 0) > 0,
-      snapshotDone: (snapCount ?? 0) > 0,
-    });
-    setProgressLoading(false);
-  }, []);
+  const [loading, setLoading]     = useState(true);
+  const [plan, setPlan]           = useState<PlanData | null>(null);
+  const [repsHours, setRepsHours] = useState(0);
+  const [stale, setStale]         = useState(false);
 
   useEffect(() => {
     const sb = getBrowserSupabaseClient();
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
-      if (s) loadProgress(s.user.id);
+      if (s) loadData(s.user.id);
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       setSession(s);
-      if (s) loadProgress(s.user.id);
+      if (s) loadData(s.user.id);
     });
     return () => subscription.unsubscribe();
-  }, [loadProgress]);
+  }, []);
 
+  async function loadData(userId: string) {
+    setLoading(true);
+    const sb = getBrowserSupabaseClient();
+
+    const [
+      { data: planRow },
+      { data: repsRows },
+    ] = await Promise.all([
+      sb.from('generated_plans')
+        .select('freedom_gap, phases, tax_strategy_stack, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      sb.from('material_participation_logs')
+        .select('hours_logged')
+        .eq('user_id', userId)
+        .gte('date', `${currentYear}-01-01`)
+        .lt('date', `${currentYear + 1}-01-01`),
+    ]);
+
+    if (planRow) {
+      setPlan({
+        freedomGap:       planRow.freedom_gap as PlanData['freedomGap'],
+        phases:           planRow.phases as PlanPhase[],
+        taxStrategyStack: planRow.tax_strategy_stack as PlanData['taxStrategyStack'],
+        createdAt:        planRow.created_at as string,
+      });
+      setStale(daysSince(planRow.created_at as string) >= 90);
+    }
+
+    if (repsRows) {
+      const total = repsRows.reduce((s, r) => s + Number(r.hours_logged ?? 0), 0);
+      setRepsHours(total);
+    }
+
+    setLoading(false);
+  }
+
+  // ── Render guards ────────────────────────────────────────────────────────
   if (sessionLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -265,19 +437,21 @@ export default function DashboardHome() {
     );
   }
   if (!session) return <AuthGate onSession={setSession} />;
+  if (loading)  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-100 h-14" />
+      <Skeleton />
+    </div>
+  );
 
-  const doneCount = [
-    progress?.visionDone,
-    progress?.numberDone,
-    progress?.snapshotDone,
-  ].filter(Boolean).length;
+  const nextAction = plan ? getNextAction(plan.phases) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Nav */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -285,60 +459,62 @@ export default function DashboardHome() {
             </div>
             <span className="font-semibold text-gray-900 text-sm">MoneyXprt</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden sm:block text-xs text-gray-400 truncate max-w-[180px]">{session.user.email}</span>
-            <button onClick={() => getBrowserSupabaseClient().auth.signOut()}
-              className="text-xs text-gray-500 hover:text-gray-900 transition px-2.5 py-1.5 rounded-lg hover:bg-gray-100">
-              Sign out
-            </button>
-          </div>
+          <button onClick={() => getBrowserSupabaseClient().auth.signOut()}
+            className="text-xs text-gray-400 hover:text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition">
+            Sign out
+          </button>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-        {/* Greeting */}
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">
-            {doneCount === 0 ? 'Welcome to MoneyXprt.' : doneCount < 3 ? 'Keep going.' : 'You\'re on track.'}
-          </h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            {doneCount === 0
-              ? 'Start with your freedom vision — it takes about 15 minutes.'
-              : doneCount < 3
-                ? `${doneCount} of 3 core steps complete. Let's finish the foundation.`
-                : 'Your foundation is set. Asset preferences and constraints are next.'}
-          </p>
-        </div>
+      <main className="max-w-lg mx-auto px-4 py-5 space-y-4">
 
-        {/* Build Your Plan card */}
-        <PlanCard progress={progress} loading={progressLoading} />
-
-        {/* Quick links */}
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-0.5">Quick access</p>
-          <div className="flex flex-col gap-2">
-            <QuickLink
-              href="/dashboard/audit/results"
-              label="Tax Strategy Audit"
-              sublabel="See your identified savings opportunities"
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-                </svg>
-              }
-            />
-            <QuickLink
-              href="/dashboard/logs"
-              label="Material Participation Logs"
-              sublabel="Log and classify your real estate hours"
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-            />
+        {/* Stale plan banner */}
+        {stale && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-xs text-amber-800 flex-1">
+              Your plan is 90+ days old.{' '}
+              <Link href="/dashboard/audit" className="font-semibold underline underline-offset-2">Update your numbers →</Link>
+            </p>
           </div>
-        </div>
+        )}
+
+        {/* No plan */}
+        {!plan && <NoPlanCard />}
+
+        {plan && (
+          <>
+            {/* Next action — above everything */}
+            {nextAction && <NextActionCard action={nextAction} />}
+
+            {/* Freedom gap hero */}
+            <FreedomGapHero plan={plan} />
+
+            {/* Phase cards */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 px-0.5">Your plan phases</p>
+              <div className="space-y-2.5">
+                {plan.phases.map(p => <PhaseCard key={p.number} phase={p} />)}
+              </div>
+            </div>
+
+            {/* Tax strategy panel */}
+            {plan.taxStrategyStack.strategies.length > 0 && (
+              <TaxStrategyPanel stack={plan.taxStrategyStack} />
+            )}
+
+            {/* REPS tracker */}
+            <REPSTracker hoursLogged={repsHours} />
+
+            {/* Quick actions */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 px-0.5">Quick actions</p>
+              <QuickActions />
+            </div>
+          </>
+        )}
       </main>
     </div>
   );
