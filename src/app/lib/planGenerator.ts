@@ -198,10 +198,10 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   const strategyResults = evaluateAll(snapshot);
   const excludedIds = snapshot.excludedStrategyIds ?? [];
   const taxSavingsActive = strategyResults
-    .filter(r => r.state === 'ACTIVE' && !excludedIds.includes(r.id))
+    .filter(r => r.state === 'ACTIVE' && r.valueType === 'cash' && !excludedIds.includes(r.id))
     .reduce((s, r) => s + r.estimatedAnnualValue, 0);
   const taxSavingsVerify = strategyResults
-    .filter(r => r.state === 'VERIFY')
+    .filter(r => r.state === 'VERIFY' && r.valueType === 'cash')
     .reduce((s, r) => s + r.estimatedAnnualValue * 0.5, 0);
   const addedToDeployableCapital = taxSavingsActive + taxSavingsVerify;
   const deployableCapitalPerYear = constraints.capitalPerYear + addedToDeployableCapital;
