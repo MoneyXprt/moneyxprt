@@ -49,10 +49,11 @@ export const depreciation: Strategy = {
   category: 'realEstate',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'realEstate',
+      valueType: 'cash',
     };
 
     // ── Gate: must currently own a rental property (Phase 1 — present reality only) ──

@@ -39,10 +39,11 @@ export const megaBackdoorRoth: Strategy = {
   category: 'retirement',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'retirement',
+      valueType: 'projected',
     };
 
     const headroom = CONTRIBUTION_LIMITS.megaBackdoorRoth;

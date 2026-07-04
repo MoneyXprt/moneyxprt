@@ -39,10 +39,11 @@ export const sCorpElection: Strategy = {
   category: 'businessStructure',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'businessStructure',
+      valueType: 'cash',
     };
 
     // Pre-compute value at current revenue regardless of state so we can

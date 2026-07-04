@@ -38,10 +38,11 @@ export const accountablePlan: Strategy = {
   category: 'tax',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'tax',
+      valueType: 'cash',
     };
 
     // ── LOCKED: no 1099 income ───────────────────────────────────────────────

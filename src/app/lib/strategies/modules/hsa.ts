@@ -31,10 +31,11 @@ export const hsa: Strategy = {
   category: 'retirement',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'retirement',
+      valueType: 'cash',
     };
 
     if (!s.hasHsaAvailable) {

@@ -39,10 +39,11 @@ export const reps: Strategy = {
   category: 'realEstate',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'realEstate',
+      valueType: 'cash',
     };
 
     // ── Gate 1: must currently own a rental (Phase 1 — present reality only) ──

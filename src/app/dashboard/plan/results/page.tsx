@@ -838,19 +838,23 @@ export default function PlanResultsPage() {
           </div>
 
           {/* ── Section 3: Tax strategy stack ────────────────────────── */}
-          {plan.taxStrategyStack.strategies.length > 0 && (
+          {plan.taxStrategyStack.strategies.length > 0 && (() => {
+            const cashStrategies      = plan.taxStrategyStack.strategies.filter(r => r.valueType === 'cash');
+            const projectedStrategies = plan.taxStrategyStack.strategies.filter(r => r.valueType === 'projected');
+            const projectedTotal      = projectedStrategies.reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
+            return (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-50">
                 <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
                   {fmt(plan.deployableCapitalPerYear)}/yr deployable capital
-                  <Tooltip content={`This is how much you can invest toward assets each year. It combines your stated capital (${fmt(plan.deployableCapitalPerYear - plan.taxStrategyStack.addedToDeployableCapital)}/yr) plus your identified tax savings (${fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr from ACTIVE strategies). Tax savings directly accelerate asset acquisition.`} />
+                  <Tooltip content={`This is how much you can invest toward assets each year. It combines your stated capital (${fmt(plan.deployableCapitalPerYear - plan.taxStrategyStack.addedToDeployableCapital)}/yr) plus your identified cash tax savings (${fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr from ACTIVE strategies). Tax savings directly accelerate asset acquisition.`} />
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Including {fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr in tax savings redirected to your investment engine
+                  Including {fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr in cash tax savings redirected to your investment engine
                 </p>
               </div>
               <div className="divide-y divide-gray-50">
-                {plan.taxStrategyStack.strategies.map(r => (
+                {cashStrategies.map(r => (
                   <div key={r.id} className="flex items-center justify-between px-5 py-3">
                     <span className="text-sm text-gray-700">{r.name}</span>
                     <span className="text-sm font-bold text-emerald-700 tabular-nums shrink-0 ml-3">
@@ -859,9 +863,23 @@ export default function PlanResultsPage() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between px-5 py-3 bg-emerald-50/60">
-                  <span className="text-sm font-semibold text-gray-900">Total added to plan</span>
+                  <span className="text-sm font-semibold text-gray-900">Cash tax savings this year</span>
                   <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr</span>
                 </div>
+                {projectedStrategies.length > 0 && (<>
+                  {projectedStrategies.map(r => (
+                    <div key={r.id} className="flex items-center justify-between px-5 py-3">
+                      <span className="text-sm text-gray-700">{r.name}</span>
+                      <span className="text-sm font-bold text-indigo-600 tabular-nums shrink-0 ml-3">
+                        {fmt(r.estimatedAnnualValue)}/yr
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between px-5 py-3 bg-indigo-50/60">
+                    <span className="text-sm font-semibold text-gray-900">Long-term value from tax-advantaged growth</span>
+                    <span className="text-sm font-bold text-indigo-600 tabular-nums">{fmt(projectedTotal)}/yr</span>
+                  </div>
+                </>)}
                 {(plan.taxStrategyStack.rentalTaxUnlockAnnualValue ?? 0) > 0 && (
                   <div className="flex items-start gap-2.5 px-5 py-3 bg-amber-50/70 border-t border-amber-100">
                     <svg className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -874,7 +892,8 @@ export default function PlanResultsPage() {
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Section 4: Asset roadmap ──────────────────────────────── */}
           {plan.assetRoadmap.length > 0 && (

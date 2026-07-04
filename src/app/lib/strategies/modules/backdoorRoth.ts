@@ -38,10 +38,11 @@ export const backdoorRoth: Strategy = {
   category: 'retirement',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'retirement',
+      valueType: 'projected',
     };
 
     const taxableIncome = getTaxableIncome(s);

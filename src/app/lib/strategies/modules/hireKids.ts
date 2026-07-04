@@ -32,10 +32,11 @@ export const hireKids: Strategy = {
   category: 'family',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'family',
+      valueType: 'cash',
     };
 
     // ── Gate 1: business entity ─────────────────────────────────────────────

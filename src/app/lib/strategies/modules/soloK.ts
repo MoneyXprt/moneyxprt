@@ -51,10 +51,11 @@ export const soloK: Strategy = {
   category: 'retirement',
 
   evaluate(s: FinancialSnapshot): StrategyResult {
-    const base: Pick<StrategyResult, 'id' | 'name' | 'category'> = {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'retirement',
+      valueType: 'cash',
     };
 
     const selfEmploymentIncome = s.income1099 + s.businessRevenue;

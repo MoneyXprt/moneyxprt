@@ -301,14 +301,23 @@ function Section({
 
 // ─── Threat hero (Defend Part 2) ─────────────────────────────────────────────
 
-function ThreatHero({ value, snapshotDate }: { value: number; snapshotDate?: string }) {
+function ThreatHero({ cashValue, projectedValue, snapshotDate }: { cashValue: number; projectedValue: number; snapshotDate?: string }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-      <p className="text-sm text-gray-400 mb-1.5">Without these strategies, you overpay:</p>
+      <p className="text-sm text-gray-400 mb-1.5">Cash tax savings this year:</p>
       <p className="text-4xl font-extrabold text-[#C9A84C] tabular-nums leading-none">
-        {fmt(value)}
+        {fmt(cashValue)}
         <span className="text-lg font-semibold text-gray-500 ml-1.5">/year in unnecessary taxes</span>
       </p>
+      {projectedValue > 0 && (
+        <>
+          <p className="text-sm text-gray-400 mt-4 mb-1.5">Long-term value from tax-advantaged growth:</p>
+          <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">
+            {fmt(projectedValue)}
+            <span className="text-base font-semibold text-gray-500 ml-1.5">/year equivalent</span>
+          </p>
+        </>
+      )}
       <p className="mt-3 text-base font-semibold text-emerald-600">Here&apos;s how to keep it.</p>
       {snapshotDate && (
         <p className="mt-1 text-xs text-gray-400">
@@ -321,8 +330,8 @@ function ThreatHero({ value, snapshotDate }: { value: number; snapshotDate?: str
 
 // ─── First-time audit banner (Defend Part 5) ──────────────────────────────────
 
-function FirstAuditBanner({ totalSavings, onDismiss }: { totalSavings: number; onDismiss: () => void }) {
-  const tenYear = Math.round(totalSavings * 14.78);
+function FirstAuditBanner({ cashValue, projectedValue, onDismiss }: { cashValue: number; projectedValue: number; onDismiss: () => void }) {
+  const tenYear = Math.round(cashValue * 14.78);
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 relative">
       <button
@@ -336,9 +345,12 @@ function FirstAuditBanner({ totalSavings, onDismiss }: { totalSavings: number; o
       <p className="text-sm font-bold text-amber-900 pr-6">Your tax situation in plain language</p>
       <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
         At your income level, the default path costs you{' '}
-        <strong>{fmt(totalSavings)}</strong> in avoidable taxes every year. That&apos;s{' '}
+        <strong>{fmt(cashValue)}</strong> in avoidable taxes every year (cash tax savings this year). That&apos;s{' '}
         <strong>{fmt(tenYear)}</strong> over 10 years that could have been building assets instead.
-        This audit shows you how to stop it.
+        {projectedValue > 0 && (
+          <> On top of that, <strong>{fmt(projectedValue)}</strong>/year in long-term value from tax-advantaged growth is available.</>
+        )}
+        {' '}This audit shows you how to stop it.
       </p>
     </div>
   );
@@ -436,7 +448,9 @@ export default function AuditResultsPage() {
   const active = results?.filter(r => r.state === 'ACTIVE').sort((a, b) => b.estimatedAnnualValue - a.estimatedAnnualValue) ?? [];
   const verify = results?.filter(r => r.state === 'VERIFY') ?? [];
   const locked = results?.filter(r => r.state === 'LOCKED') ?? [];
-  const totalActiveValue = active.reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
+  const totalActiveValue    = active.reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
+  const totalCashValue      = active.filter(r => r.valueType === 'cash').reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
+  const totalProjectedValue = active.filter(r => r.valueType === 'projected').reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -511,11 +525,11 @@ export default function AuditResultsPage() {
           <>
             {/* First-time audit banner (Defend Part 5) */}
             {!firstAuditDismissed && totalActiveValue > 0 && (
-              <FirstAuditBanner totalSavings={totalActiveValue} onDismiss={dismissFirstAudit} />
+              <FirstAuditBanner cashValue={totalCashValue} projectedValue={totalProjectedValue} onDismiss={dismissFirstAudit} />
             )}
 
             {/* Threat hero (Defend Part 2) */}
-            <ThreatHero value={totalActiveValue} snapshotDate={snapshotDate} />
+            <ThreatHero cashValue={totalCashValue} projectedValue={totalProjectedValue} snapshotDate={snapshotDate} />
 
             {/* Available Now */}
             <Section

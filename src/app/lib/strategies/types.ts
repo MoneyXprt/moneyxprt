@@ -77,6 +77,7 @@ export interface StrategyResult {
   category: 'tax' | 'retirement' | 'realEstate' | 'businessStructure' | 'debt' | 'investment' | 'family';
   state: StrategyState;
   estimatedAnnualValue: number;
+  valueType: 'cash' | 'projected';
   reason: string;
   unlockCondition?: string;
   blockedBy?: string;
