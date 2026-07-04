@@ -227,7 +227,11 @@ export function generateActions(
   }
 
   // Activate all tax strategies
-  const totalSavings = plan.taxStrategyStack.addedToDeployableCapital;
+  // Recomputed from activeStrategies (already re-gated against currentEligibility above)
+  // rather than plan.taxStrategyStack.addedToDeployableCapital, which is a stale total from
+  // whenever the plan was generated and can still include value from a strategy that has
+  // since become LOCKED.
+  const totalSavings = activeStrategies.reduce((sum, s) => sum + s.estimatedAnnualValue, 0);
   if (totalSavings > 0 && activeStrategies.length > 0) {
     thisYear.push({
       title: 'Activate all tax strategies',
