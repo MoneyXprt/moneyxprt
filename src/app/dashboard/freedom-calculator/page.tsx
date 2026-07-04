@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
@@ -297,6 +297,8 @@ function ResultsScreen({
 
 export default function FreedomCalculatorPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isFresh = searchParams.get('fresh') === 'true';
   const [session, setSession]           = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -313,7 +315,7 @@ export default function FreedomCalculatorPage() {
     sb.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
-      if (s) {
+      if (s && !isFresh) {
         // Load most recent freedom profile if exists
         const { data } = await sb
           .from('freedom_profiles')
@@ -377,7 +379,7 @@ export default function FreedomCalculatorPage() {
           { onConflict: 'user_id' },
         );
       if (error) throw error;
-      router.push('/dashboard/audit');
+      router.push('/dashboard/audit' + (isFresh ? '?fresh=true' : ''));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed. Please try again.');
       setSaving(false);

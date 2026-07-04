@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
@@ -276,6 +276,8 @@ function AssetCardComponent({
 
 export default function AssetPreferencesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isFresh = searchParams.get('fresh') === 'true';
   const [session, setSession]             = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -289,7 +291,7 @@ export default function AssetPreferencesPage() {
     sb.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
-      if (s) {
+      if (s && !isFresh) {
         const { data } = await sb
           .from('asset_preferences')
           .select('asset_type')
@@ -436,7 +438,7 @@ export default function AssetPreferencesPage() {
       </main>
 
       {/* ── Sticky CTA ───────────────────────────────────────────────────── */}
-      <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 px-4 py-4 z-20">
+      <div className="fixed bottom-[60px] inset-x-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 px-4 py-4 z-[60]">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           <div className="shrink-0">
             {count > 0 ? (

@@ -67,6 +67,135 @@ function SkeletonRow() {
   );
 }
 
+// ─── Audit Defense Status (Defend Part 3) ────────────────────────────────────
+
+const REPS_HOUR_TARGET = 750;
+
+function AuditDefenseStatus({ ytdHours }: { ytdHours: number }) {
+  const qualified   = ytdHours >= REPS_HOUR_TARGET;
+  const hoursNeeded = Math.max(0, REPS_HOUR_TARGET - ytdHours);
+  const pct         = Math.min(100, Math.round((ytdHours / REPS_HOUR_TARGET) * 100));
+  const [open, setOpen] = useState(false);
+
+  const accent = qualified ? {
+    border: 'border-emerald-200',
+    bg:     'bg-emerald-50',
+    iconBg: 'bg-emerald-100',
+    icon:   'text-emerald-600',
+    label:  'text-emerald-700',
+    head:   'text-emerald-900',
+    body:   'text-emerald-700',
+    bar:    'bg-emerald-200',
+    fill:   'bg-emerald-500',
+    pct:    'text-emerald-600',
+    divider:'border-emerald-200',
+    toggle: 'text-emerald-700 hover:text-emerald-900',
+    check:  'text-emerald-500',
+  } : {
+    border: 'border-amber-200',
+    bg:     'bg-amber-50',
+    iconBg: 'bg-amber-100',
+    icon:   'text-amber-600',
+    label:  'text-amber-700',
+    head:   'text-amber-900',
+    body:   'text-amber-700',
+    bar:    'bg-amber-200',
+    fill:   pct >= 50 ? 'bg-amber-500' : 'bg-amber-400',
+    pct:    'text-amber-600',
+    divider:'border-amber-200',
+    toggle: 'text-amber-700 hover:text-amber-900',
+    check:  'text-amber-500',
+  };
+
+  return (
+    <div className={`rounded-2xl border p-5 space-y-4 ${accent.bg} ${accent.border}`}>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${accent.iconBg}`}>
+          <svg className={`w-5 h-5 ${accent.icon}`} fill="currentColor" viewBox="0 0 24 24">
+            <path fillRule="evenodd" d="M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 002.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 00.374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 00-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${accent.label}`}>
+            Audit Defense Status
+          </p>
+          {qualified ? (
+            <>
+              <p className={`text-sm font-bold ${accent.head}`}>Your REPS documentation is audit-ready</p>
+              <p className={`text-xs mt-1 leading-relaxed ${accent.body}`}>
+                You have {Math.round(ytdHours)} hours logged this year — you meet the 750-hour requirement.
+              </p>
+              <p className={`text-xs mt-1 leading-relaxed ${accent.body}`}>
+                Your time logs are your legal defense. Keep logging through December 31.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className={`text-sm font-bold ${accent.head}`}>Your REPS documentation is incomplete</p>
+              <p className={`text-xs mt-1 leading-relaxed ${accent.body}`}>
+                You need {Math.round(hoursNeeded)} more hours by December 31 to qualify.
+              </p>
+              <p className={`text-xs mt-1 leading-relaxed ${accent.body}`}>
+                IRS §469(c)(7) requires contemporaneous records. Logs created after the fact are routinely rejected in audit.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className={`h-2 rounded-full overflow-hidden ${accent.bar}`}>
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${accent.fill}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className={`text-[10px] mt-1 font-medium tabular-nums ${accent.pct}`}>
+          {Math.round(ytdHours)} of {REPS_HOUR_TARGET} hours logged
+        </p>
+      </div>
+
+      {/* What counts expandable */}
+      <div className={`border-t pt-3 ${accent.divider}`}>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className={`flex items-center gap-1.5 text-xs font-semibold transition ${accent.toggle}`}
+        >
+          <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          What counts as REPS hours?
+        </button>
+        {open && (
+          <div className="mt-3 space-y-1.5">
+            {[
+              'Property management activities',
+              'Tenant communications',
+              'Maintenance coordination',
+              'Acquisition research and due diligence',
+              'Time with property managers',
+              'Inspections and walkthroughs',
+              'Lease negotiations',
+            ].map(item => (
+              <div key={item} className="flex items-start gap-2">
+                <span className={`text-xs font-bold shrink-0 mt-0.5 ${accent.check}`}>✓</span>
+                <span className="text-xs text-gray-700">{item}</span>
+              </div>
+            ))}
+            <div className="flex items-start gap-2 mt-1">
+              <span className="text-xs font-bold shrink-0 mt-0.5 text-red-400">✕</span>
+              <span className="text-xs text-gray-700">Does NOT count: time spent managing your own residence</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Auth gate ────────────────────────────────────────────────────────────────
 
 function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
@@ -317,6 +446,9 @@ export default function MaterialParticipationLogsPage() {
             <StatPill label="All time" value={`${totalHours.toFixed(1)} hrs`} accent="gray" />
           </div>
         </div>
+
+        {/* ── Audit defense status (Defend Part 3) ─────────────────────── */}
+        <AuditDefenseStatus ytdHours={ytdHours} />
 
         {/* ── Voice log input card ─────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

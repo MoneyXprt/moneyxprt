@@ -55,40 +55,40 @@ export const depreciation: Strategy = {
       category: 'realEstate',
     };
 
-    // ── Gate: no real estate planned → LOCKED ───────────────────────────────
-    if (!s.consideringRealEstate) {
+    // ── Gate: must currently own a rental property (Phase 1 — present reality only) ──
+    if (!s.currentlyOwnsRental) {
       return {
         ...base,
-        state: 'LOCKED',
+        state: 'NOT_APPLICABLE',
         estimatedAnnualValue: 0,
         reason:
-          'Depreciation benefits require ownership of rental real estate. ' +
-          'No property acquisition is currently planned.',
-        unlockCondition: 'Plan a rental property acquisition and provide an estimated purchase price.',
+          'Real estate depreciation requires current ownership of a rental property. ' +
+          'This strategy will become available once you acquire your first rental.',
+        unlockCondition: 'Acquire a rental property and update your financial snapshot.',
       };
     }
 
     // ── No property value provided yet → VERIFY ─────────────────────────────
-    if (!s.plannedPropertyValue || s.plannedPropertyValue <= 0) {
+    const propertyValue = s.rentalPropertyValue > 0 ? s.rentalPropertyValue : s.plannedPropertyValue;
+    if (!propertyValue || propertyValue <= 0) {
       return {
         ...base,
         state: 'VERIFY',
         estimatedAnnualValue: 0,
         reason:
-          'You have indicated interest in real estate, but no planned property value has ' +
-          'been provided. A purchase price is needed to estimate annual depreciation and ' +
-          'the potential value of a cost segregation study.',
-        blockedBy: 'plannedPropertyValue',
+          'You own a rental property but no property value has been provided. ' +
+          'A value is needed to estimate annual depreciation.',
+        blockedBy: 'rentalPropertyValue',
       };
     }
 
     // ── Compute straight-line annual depreciation ────────────────────────────
-    const buildingBasis       = s.plannedPropertyValue * BUILDING_BASIS_FRACTION;
+    const buildingBasis       = propertyValue * BUILDING_BASIS_FRACTION;
     const annualDepreciation  = buildingBasis / DEPRECIATION_PERIOD_YEARS;
     const taxableIncome       = getTaxableIncome(s);
     const combinedMarginalRate = getMarginalRate(taxableIncome, s.filingStatus, s.state);
 
-    const costSegAdvised = s.plannedPropertyValue >= COST_SEG_MIN_PROPERTY_VALUE;
+    const costSegAdvised = propertyValue >= COST_SEG_MIN_PROPERTY_VALUE;
 
     // ── ACTIVE + REPS qualified: losses are non-passive, offset W-2 ─────────
     if (s.repsQualified === true) {
@@ -112,7 +112,7 @@ export const depreciation: Strategy = {
         reason:
           `With Real Estate Professional Status confirmed, depreciation losses are ` +
           `non-passive and directly offset your W-2 income. ` +
-          `On a $${s.plannedPropertyValue.toLocaleString()} property, the depreciable ` +
+          `On a $${propertyValue.toLocaleString()} property, the depreciable ` +
           `building basis is ~$${Math.round(buildingBasis).toLocaleString()} (${(BUILDING_BASIS_FRACTION * 100).toFixed(0)}% of purchase price, ` +
           `excluding land). Straight-line depreciation over ${DEPRECIATION_PERIOD_YEARS} years ` +
           `produces ~$${Math.round(annualDepreciation).toLocaleString()}/year in paper losses. ` +
@@ -124,8 +124,6 @@ export const depreciation: Strategy = {
     }
 
     // ── ACTIVE but passive: depreciation is suspended without REPS ──────────
-    // Still ACTIVE because the property is planned and the loss is real —
-    // it will be unlocked at sale or when REPS is achieved.
     const suspendedAnnualValue = Math.round(annualDepreciation * combinedMarginalRate);
 
     const costSegNote = costSegAdvised
@@ -140,7 +138,7 @@ export const depreciation: Strategy = {
       state: 'ACTIVE',
       estimatedAnnualValue: 0,
       reason:
-        `On a $${s.plannedPropertyValue.toLocaleString()} property, straight-line depreciation ` +
+        `On a $${propertyValue.toLocaleString()} property, straight-line depreciation ` +
         `generates ~$${Math.round(annualDepreciation).toLocaleString()}/year in paper losses ` +
         `(building basis $${Math.round(buildingBasis).toLocaleString()} ÷ ${DEPRECIATION_PERIOD_YEARS} years). ` +
         `However, without Real Estate Professional Status, these losses are passive under ` +

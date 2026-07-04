@@ -45,18 +45,18 @@ export const reps: Strategy = {
       category: 'realEstate',
     };
 
-    // ── Gate 1: no real estate planned → LOCKED ─────────────────────────────
-    if (!s.consideringRealEstate) {
+    // ── Gate 1: must currently own a rental (Phase 1 — present reality only) ──
+    if (!s.currentlyOwnsRental) {
       return {
         ...base,
-        state: 'LOCKED',
+        state: 'NOT_APPLICABLE',
         estimatedAnnualValue: 0,
         reason:
           'Real Estate Professional Status requires active participation in rental real ' +
-          'estate activities. No property acquisition is currently planned.',
+          'estate activities. You do not currently own a rental property.',
         unlockCondition:
-          'Acquire a rental property and have a non-working spouse commit to tracking ' +
-          '750+ hours per year of qualifying real estate activity with contemporaneous logs.',
+          'Acquire a rental property. Once you own one, REPS allows a non-working spouse ' +
+          'to classify rental losses as non-passive, offsetting W-2 income directly.',
       };
     }
 

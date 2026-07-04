@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Tooltip } from '@/components/Tooltip';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generatePlan, savePlan } from '@/app/lib/planGenerator';
+import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
 import type { Session } from '@supabase/supabase-js';
 
@@ -108,7 +110,30 @@ function ActionRow({ action }: { action: PlanAction }) {
 
 // ─── Roadmap table ────────────────────────────────────────────────────────────
 
+type MilestoneRow = { isMilestone: true; label: string; pct: number; key: string };
+type TableRow = AssetRoadmapRow | MilestoneRow;
+
+function buildTableRows(rows: AssetRoadmapRow[], target: number): TableRow[] {
+  const thresholds = [
+    { pct: 0.25, label: '25% of your freedom gap closed' },
+    { pct: 0.50, label: 'Halfway to financial freedom' },
+    { pct: 0.75, label: '75% of the way there' },
+  ];
+  const result: TableRow[] = [];
+  let ti = 0;
+  for (const row of rows) {
+    while (ti < thresholds.length && row.cumulativeMonthlyIncome >= target * thresholds[ti].pct) {
+      result.push({ isMilestone: true, label: thresholds[ti].label, pct: thresholds[ti].pct, key: `ms-${thresholds[ti].pct}` });
+      ti++;
+    }
+    result.push(row);
+  }
+  return result;
+}
+
 function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedomTarget: number }) {
+  const tableRows = buildTableRows(rows, freedomTarget);
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-50">
@@ -128,13 +153,32 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => {
-              const isFreedomRow = row.remainingGap === 0 && (i === 0 || rows[i - 1].remainingGap > 0);
+            {tableRows.map((row, i) => {
+              if ('isMilestone' in row) {
+                return (
+                  <tr key={row.key} className="bg-amber-50/60 border-b border-amber-100">
+                    <td colSpan={5} className="px-4 py-1.5">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-wide">
+                        <span style={{ fontSize: '11px' }}>★</span>
+                        {row.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              }
+
+              const isRentalRow = (row.action?.toLowerCase().includes('rental') || row.assetType?.toLowerCase().includes('rental')) ?? false;
+              const isFreedomRow = row.remainingGap === 0;
+
               return (
                 <tr
                   key={i}
                   className={`border-b border-gray-50 last:border-0 transition-colors ${
-                    isFreedomRow ? 'bg-emerald-50' : 'hover:bg-gray-50/60'
+                    isFreedomRow
+                      ? 'bg-emerald-50'
+                      : isRentalRow
+                      ? 'bg-amber-50/30'
+                      : 'hover:bg-gray-50/60'
                   }`}
                 >
                   <td className="px-4 py-3 text-gray-500 tabular-nums whitespace-nowrap">
@@ -142,6 +186,9 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
                   </td>
                   <td className="px-4 py-3 text-gray-700 leading-tight">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {isRentalRow && !isFreedomRow && (
+                        <span style={{ color: '#C9A84C', fontSize: '11px', lineHeight: 1 }}>★</span>
+                      )}
                       <span>{row.action}</span>
                       {isFreedomRow && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wide shrink-0">
@@ -173,18 +220,180 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
   );
 }
 
+// ─── Vision moment card ───────────────────────────────────────────────────────
+
+function VisionMomentCard({ visionText, message, suffix }: {
+  visionText: string;
+  message: string;
+  suffix?: string;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border-l-4 border-l-emerald-500 border border-gray-100 shadow-sm px-5 py-5 animate-fade-in">
+      <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-3">Your Vision</p>
+      <p className="text-sm text-gray-600 italic leading-relaxed mb-3">&ldquo;{visionText}&rdquo;</p>
+      <p className="text-sm text-gray-800">{message}</p>
+      {suffix && <p className="mt-2 text-xs font-bold text-[#C9A84C]">{suffix}</p>}
+    </div>
+  );
+}
+
+// ─── Plan comparison ──────────────────────────────────────────────────────────
+
+interface PreviousPlanData {
+  freedomGap: {
+    projectedFreedomYear: number;
+    gapMonthly: number;
+    freedomNumberMonthly: number;
+    currentPassiveMonthly: number;
+    yearsToFreedom: number;
+  };
+  deployableCapitalPerYear: number;
+  taxStrategyStack: {
+    strategies: Array<{ id: string; name: string; estimatedAnnualValue: number }>;
+    addedToDeployableCapital: number;
+    annualValue: number;
+  };
+}
+
+function generateChangeExplanation(prev: PreviousPlanData, next: GeneratedPlan): string[] {
+  const lines: string[] = [];
+  const yearDelta = prev.freedomGap.projectedFreedomYear - next.freedomGap.projectedFreedomYear;
+  const capDelta  = next.deployableCapitalPerYear - prev.deployableCapitalPerYear;
+  const prevStrategyIds = new Set(prev.taxStrategyStack.strategies.map(s => s.id));
+  const newStrategies   = next.taxStrategyStack.strategies.filter(s => !prevStrategyIds.has(s.id));
+
+  if (yearDelta > 0) {
+    lines.push(
+      `Your freedom date moved ${yearDelta} year${yearDelta !== 1 ? 's' : ''} earlier. Higher deployable capital means assets are acquired sooner, and passive income starts compounding earlier — each year of early gains compounds forward through the rest of the roadmap.`,
+    );
+  } else if (yearDelta < 0) {
+    lines.push(
+      `Your freedom date moved ${Math.abs(yearDelta)} year${Math.abs(yearDelta) !== 1 ? 's' : ''} later. This typically happens when your freedom number increased or your capital deployment rate decreased — both extend how long it takes your passive income to reach your target.`,
+    );
+  }
+
+  if (capDelta > 50) {
+    const yearGrowth = Math.round(capDelta * Math.pow(1.07, 10));
+    lines.push(
+      `Your deployable capital increased from ${fmt(prev.deployableCapitalPerYear)} to ${fmt(next.deployableCapitalPerYear)}/yr (+${fmt(capDelta)}/yr). Compounded at 7% for 10 years, that additional capital is worth ${fmt(yearGrowth)} — and it starts flowing into your asset engine immediately.`,
+    );
+  } else if (capDelta < -50) {
+    lines.push(
+      `Your deployable capital decreased by ${fmt(Math.abs(capDelta))}/yr. This directly slows asset acquisition and pushes your freedom date later.`,
+    );
+  }
+
+  for (const s of newStrategies) {
+    lines.push(
+      `${s.name} became available because you now meet its eligibility criteria. This adds ${fmt(s.estimatedAnnualValue)}/yr to your plan — capital that goes directly into your asset-building engine and has been incorporated into your new freedom date.`,
+    );
+  }
+
+  return lines;
+}
+
+function PlanDeltaCard({ prev, next }: { prev: PreviousPlanData; next: GeneratedPlan }) {
+  const [showWhy, setShowWhy] = useState(false);
+  const yearDelta = prev.freedomGap.projectedFreedomYear - next.freedomGap.projectedFreedomYear;
+  const gapDelta  = prev.freedomGap.gapMonthly - next.freedomGap.gapMonthly;
+  const capDelta  = next.deployableCapitalPerYear - prev.deployableCapitalPerYear;
+
+  const prevStrategyIds = new Set(prev.taxStrategyStack.strategies.map(s => s.id));
+  const newStrategies   = next.taxStrategyStack.strategies.filter(s => !prevStrategyIds.has(s.id));
+
+  const hasChanges = yearDelta !== 0 || Math.abs(gapDelta) > 1 || Math.abs(capDelta) > 50 || newStrategies.length > 0;
+  if (!hasChanges) return null;
+
+  const explanations = generateChangeExplanation(prev, next);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-50">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">What changed in your plan</p>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {yearDelta !== 0 && (
+          <div className="px-5 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">Freedom date</p>
+            <p className={`text-sm font-bold tabular-nums ${yearDelta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {prev.freedomGap.projectedFreedomYear} → {next.freedomGap.projectedFreedomYear}
+              {' '}
+              <span className="font-normal text-xs">
+                ({Math.abs(yearDelta)} yr{Math.abs(yearDelta) !== 1 ? 's' : ''} {yearDelta > 0 ? 'earlier' : 'later'})
+              </span>
+            </p>
+          </div>
+        )}
+        {Math.abs(gapDelta) > 1 && (
+          <div className="px-5 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">Monthly gap</p>
+            <p className={`text-sm font-bold tabular-nums ${gapDelta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {fmt(prev.freedomGap.gapMonthly)} → {fmt(next.freedomGap.gapMonthly)}/mo
+            </p>
+          </div>
+        )}
+        {Math.abs(capDelta) > 50 && (
+          <div className="px-5 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">Annual capital deployment</p>
+            <p className={`text-sm font-bold tabular-nums ${capDelta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {capDelta > 0 ? '+' : ''}{fmt(capDelta)}/yr
+            </p>
+          </div>
+        )}
+        {newStrategies.length > 0 && (
+          <div className="px-5 py-3 space-y-1.5">
+            <p className="text-xs text-gray-500">Newly unlocked strategies</p>
+            {newStrategies.map(s => (
+              <div key={s.id} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <p className="text-xs text-emerald-700 font-medium">{s.name} — {fmt(s.estimatedAnnualValue)}/yr</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {explanations.length > 0 && (
+          <div className="px-5 py-3">
+            <button
+              type="button"
+              onClick={() => setShowWhy(e => !e)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition font-medium"
+            >
+              <svg className={`w-3 h-3 transition-transform ${showWhy ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+              Why did this change?
+            </button>
+            {showWhy && (
+              <div className="mt-3 space-y-2.5">
+                {explanations.map((line, i) => (
+                  <p key={i} className="text-xs text-gray-600 leading-relaxed">{line}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type MissingStepInfo = { label: string; href: string };
 
 export default function PlanResultsPage() {
-  const [session, setSession]       = useState<Session | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [plan, setPlan]             = useState<GeneratedPlan | null>(null);
-  const [missing, setMissing]       = useState<MissingStepInfo[]>([]);
-  const [error, setError]           = useState<string | null>(null);
-  const [narrative, setNarrative]   = useState<string | null>(null);
+  const [session, setSession]         = useState<Session | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [plan, setPlan]               = useState<GeneratedPlan | null>(null);
+  const [previousPlan, setPreviousPlan] = useState<PreviousPlanData | null>(null);
+  const [missing, setMissing]         = useState<MissingStepInfo[]>([]);
+  const [error, setError]             = useState<string | null>(null);
+  const [narrative, setNarrative]     = useState<string | null>(null);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [isPartnerView, setIsPartnerView] = useState(false);
+  const [visionText, setVisionText]   = useState<string | null>(null);
+  const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
+  const actionsSaved = useRef(false);
 
   useEffect(() => {
     const sb = getBrowserSupabaseClient();
@@ -208,13 +417,50 @@ export default function PlanResultsPage() {
       const sb = getBrowserSupabaseClient();
       const userId = s.user.id;
 
-      // Fetch each source explicitly — avoids silent index-misalignment bugs
-      // that arise when mixing Supabase queries ({ data }) with plain-returning
-      // helpers (getLatestSnapshot) inside a single Promise.all destructure.
+      // Check if this user is a partner on someone else's plan
+      const { data: primaryProfile } = await sb
+        .from('freedom_profiles')
+        .select('user_id')
+        .eq('partner_user_id', userId)
+        .eq('partner_accepted', true)
+        .maybeSingle();
+
+      if (primaryProfile) {
+        setIsPartnerView(true);
+        // Fetch the primary user's current plan (RLS allows this via partner policy)
+        const { data: planRow } = await sb
+          .from('generated_plans')
+          .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, deployable_capital_per_year')
+          .eq('user_id', primaryProfile.user_id)
+          .eq('is_current', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!planRow) {
+          setError("Your partner hasn't generated their plan yet. Ask them to visit the Plan tab first.");
+          setLoading(false);
+          return;
+        }
+
+        const partnerPlan: GeneratedPlan = {
+          freedomGap:               planRow.freedom_gap as GeneratedPlan['freedomGap'],
+          phases:                   planRow.phases as GeneratedPlan['phases'],
+          taxStrategyStack:         planRow.tax_strategy_stack as GeneratedPlan['taxStrategyStack'],
+          assetRoadmap:             planRow.asset_roadmap as GeneratedPlan['assetRoadmap'],
+          deployableCapitalPerYear: Number(planRow.deployable_capital_per_year),
+          aiNarrative:              null,
+        };
+        setPlan(partnerPlan);
+        setLoading(false);
+        return;
+      }
+
       const [
         { data: profileRow },
         { data: assetRows, error: assetError },
         { data: constraintsRow },
+        { data: prevPlanRow },
       ] = await Promise.all([
         sb.from('freedom_profiles')
           .select('vision_text, target_free_age, freedom_type, freedom_number_monthly, portfolio_target, housing, health_insurance, food, transportation, travel, kids, savings_buffer, misc')
@@ -222,7 +468,6 @@ export default function PlanResultsPage() {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
-        // No .limit(), no .single() — returns every selected asset row for this user
         sb.from('asset_preferences')
           .select('asset_type')
           .eq('user_id', userId)
@@ -230,6 +475,14 @@ export default function PlanResultsPage() {
         sb.from('user_constraints')
           .select('capital_per_year, hours_per_week, risk_tolerance, hard_constraints')
           .eq('user_id', userId)
+          .maybeSingle(),
+        // Fetch the current plan before we overwrite it — used for the "what changed" diff + narrative reuse
+        sb.from('generated_plans')
+          .select('freedom_gap, deployable_capital_per_year, tax_strategy_stack, ai_narrative')
+          .eq('user_id', userId)
+          .eq('is_current', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle(),
       ]);
 
@@ -285,36 +538,84 @@ export default function PlanResultsPage() {
         },
       };
 
+      // Capture previous plan for diff before savePlan retires it
+      if (prevPlanRow) {
+        setPreviousPlan({
+          freedomGap:              prevPlanRow.freedom_gap as PreviousPlanData['freedomGap'],
+          deployableCapitalPerYear: Number(prevPlanRow.deployable_capital_per_year),
+          taxStrategyStack:        prevPlanRow.tax_strategy_stack as PreviousPlanData['taxStrategyStack'],
+        });
+      }
+
       // Generate + save
       const generated = generatePlan(inputs);
       setPlan(generated);
 
-      // Save async — don't block rendering on save failure
+      // Vision text for emotional moments
+      setVisionText(profileRow?.vision_text ?? null);
+
+      // Freedom date milestones — shown once per threshold per browser
+      const thisYear   = new Date().getFullYear();
+      const yearsLeft  = generated.freedomGap.projectedFreedomYear - thisYear;
+      if (yearsLeft <= 5 && !localStorage.getItem('milestone_shown_5')) {
+        setMilestoneBanner('5 years or less. This is real.');
+        localStorage.setItem('milestone_shown_5', '1');
+      } else if (yearsLeft <= 10 && !localStorage.getItem('milestone_shown_10')) {
+        setMilestoneBanner("Under 10 years. You're in rare company.");
+        localStorage.setItem('milestone_shown_10', '1');
+      } else if (yearsLeft <= 15 && !localStorage.getItem('milestone_shown_15')) {
+        setMilestoneBanner("You're within 15 years of freedom. Most people never get this close.");
+        localStorage.setItem('milestone_shown_15', '1');
+      }
+
+      // Save plan async — don't block rendering
       savePlan(generated, userId).catch(e => console.warn('savePlan failed:', e));
 
-      // Narrative: fire async, never block plan display
-      setNarrativeLoading(true);
-      fetch('/api/generate-narrative', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          freedomVision:           profileRow!.vision_text ?? '',
-          freedomNumber:           generated.freedomGap.freedomNumberMonthly,
-          currentPassiveIncome:    generated.freedomGap.currentPassiveMonthly,
-          gapMonthly:              generated.freedomGap.gapMonthly,
-          projectedFreedomYear:    generated.freedomGap.projectedFreedomYear,
-          deployableCapitalPerYear: generated.deployableCapitalPerYear,
-          taxStrategyAnnualValue:  generated.taxStrategyStack.annualValue,
-          phases:                  generated.phases,
-          assetRoadmap:            generated.assetRoadmap.slice(0, 5),
-          freedomType:             profileRow!.freedom_type,
-          targetFreeAge:           Number(profileRow!.target_free_age),
-        }),
-      })
-        .then(r => r.json())
-        .then(({ narrative: n }: { narrative: string | null }) => setNarrative(n))
-        .catch(() => setNarrative(null))
-        .finally(() => setNarrativeLoading(false));
+      // Regenerate execution actions — once per page mount, not on every render
+      if (!actionsSaved.current) {
+        actionsSaved.current = true;
+        const execActions = generateActions(generated, snapshot, 0);
+        saveActions(execActions, userId).catch(e => console.warn('saveActions failed:', e));
+      }
+
+      // Narrative: only call OpenAI when the plan has changed meaningfully
+      const savedNarrative    = (prevPlanRow as { ai_narrative?: string | null } | null)?.ai_narrative ?? null;
+      const savedFreedomYear  = (prevPlanRow?.freedom_gap as { projectedFreedomYear?: number } | null)?.projectedFreedomYear;
+      const savedCapital      = Number(prevPlanRow?.deployable_capital_per_year ?? 0);
+      const newFreedomYear    = generated.freedomGap.projectedFreedomYear;
+      const newCapital        = generated.deployableCapitalPerYear;
+
+      const needsNewNarrative =
+        !savedNarrative ||
+        savedFreedomYear !== newFreedomYear ||
+        Math.abs(newCapital - savedCapital) > 1000;
+
+      if (!needsNewNarrative) {
+        setNarrative(savedNarrative);
+      } else {
+        setNarrativeLoading(true);
+        fetch('/api/generate-narrative', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            freedomVision:            profileRow!.vision_text ?? '',
+            freedomNumber:            generated.freedomGap.freedomNumberMonthly,
+            currentPassiveIncome:     generated.freedomGap.currentPassiveMonthly,
+            gapMonthly:               generated.freedomGap.gapMonthly,
+            projectedFreedomYear:     newFreedomYear,
+            deployableCapitalPerYear: newCapital,
+            taxStrategyAnnualValue:   generated.taxStrategyStack.annualValue,
+            phases:                   generated.phases,
+            assetRoadmap:             generated.assetRoadmap.slice(0, 5),
+            freedomType:              profileRow!.freedom_type,
+            targetFreeAge:            Number(profileRow!.target_free_age),
+          }),
+        })
+          .then(r => r.json())
+          .then(({ narrative: n }: { narrative: string | null }) => setNarrative(n))
+          .catch(() => setNarrative(null))
+          .finally(() => setNarrativeLoading(false));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate your plan.');
     } finally {
@@ -358,6 +659,28 @@ export default function PlanResultsPage() {
         </div>
       </header>
 
+      {/* Plan tab bar */}
+      <div className="bg-white border-b border-gray-100 sticky top-14 z-10">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6">
+          <div className="flex">
+            {([
+              { label: 'Plan',        href: '/dashboard/plan/results' },
+              { label: 'Timeline ✨', href: '/dashboard/plan/timeline' },
+              { label: 'Assumptions', href: '/dashboard/plan/assumptions' },
+            ] as const).map(tab => (
+              <Link key={tab.href} href={tab.href}
+                className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+                  tab.href === '/dashboard/plan/results'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-gray-400 hover:text-gray-700'
+                }`}>
+                {tab.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Content */}
       {loading && <Skeleton />}
 
@@ -382,6 +705,24 @@ export default function PlanResultsPage() {
       {!loading && plan && (
         <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-5">
 
+          {/* ── Partner banner ────────────────────────────────────────── */}
+          {isPartnerView && (
+            <div className="flex items-center gap-3 bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4">
+              <span className="text-2xl">🏠</span>
+              <div>
+                <p className="text-sm font-semibold text-purple-900">Your shared path to freedom</p>
+                <p className="text-xs text-purple-600 mt-0.5">You're viewing your household's freedom plan. Head to Execute to check off your actions.</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Milestone celebration banner (Part 2) ─────────────────── */}
+          {milestoneBanner && (
+            <div className="bg-emerald-600 -mx-4 sm:mx-0 sm:rounded-2xl px-5 py-5 text-white text-center animate-fade-in">
+              <p className="text-base font-bold leading-snug">{milestoneBanner}</p>
+            </div>
+          )}
+
           {/* ── Section 1: Freedom Gap Hero ───────────────────────────── */}
           <div className="bg-emerald-600 rounded-2xl p-6 text-white">
             <p className="text-sm font-semibold text-emerald-200 uppercase tracking-wide mb-4">Your Freedom Plan</p>
@@ -396,7 +737,10 @@ export default function PlanResultsPage() {
                 <span className="text-base font-semibold tabular-nums">{fmt(plan.freedomGap.currentPassiveMonthly)}/mo</span>
               </div>
               <div className="flex justify-between items-center border-t border-emerald-500 pt-2">
-                <span className="text-sm text-emerald-200">Gap to Close</span>
+                <span className="flex items-center gap-1 text-sm text-emerald-200">
+                  Gap to Close
+                  <Tooltip content={`Your freedom gap is the monthly passive income you still need to build. It closes as you acquire assets. Right now you need ${fmt(plan.freedomGap.gapMonthly)}/mo more — the roadmap below shows the year-by-year path to closing it completely.`} />
+                </span>
                 <span className="text-base font-bold text-amber-300 tabular-nums">{fmt(plan.freedomGap.gapMonthly)}/mo</span>
               </div>
             </div>
@@ -406,28 +750,53 @@ export default function PlanResultsPage() {
               <p className="text-4xl font-extrabold tracking-tight">
                 {plan.freedomGap.yearsToFreedom === 0 ? 'Free Now' : plan.freedomGap.projectedFreedomYear}
               </p>
-              <p className="text-emerald-300 text-sm mt-1">
+              <p className="text-emerald-300 text-sm mt-1 flex items-center justify-center gap-1">
                 {plan.freedomGap.yearsToFreedom === 0
                   ? 'Your passive income already covers your freedom number.'
                   : `Projected freedom year — ${plan.freedomGap.yearsToFreedom} years from now`}
+                <Tooltip content="Your projected freedom year is calculated by modeling how long it takes your asset income to equal your freedom number, given your current capital deployment rate, tax savings, and selected asset engines. Move the levers in Plan Assumptions to see it change." />
               </p>
             </div>
 
             {/* Progress bar */}
-            {plan.freedomGap.freedomNumberMonthly > 0 && (
-              <div>
-                <div className="h-2 bg-emerald-700/60 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white rounded-full transition-all"
-                    style={{ width: `${Math.min(100, Math.round((plan.freedomGap.currentPassiveMonthly / plan.freedomGap.freedomNumberMonthly) * 100))}%` }}
-                  />
+            {plan.freedomGap.freedomNumberMonthly > 0 && (() => {
+              const pct = Math.min(100, Math.round((plan.freedomGap.currentPassiveMonthly / plan.freedomGap.freedomNumberMonthly) * 100));
+              return (
+                <div>
+                  <div className="h-2 bg-emerald-700/60 rounded-full overflow-hidden">
+                    <div className="h-full bg-white rounded-full transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-xs text-emerald-300 mt-1.5 text-center flex items-center justify-center gap-1">
+                    {pct}% of your freedom gap closed
+                    <Tooltip content={`This bar fills as your passive income grows relative to your freedom number. At 100% you're free. Right now you're generating ${pct}% of what you need — ${fmt(plan.freedomGap.currentPassiveMonthly)}/mo of ${fmt(plan.freedomGap.freedomNumberMonthly)}/mo.`} />
+                  </p>
                 </div>
-                <p className="text-xs text-emerald-300 mt-1.5 text-center">
-                  {Math.min(100, Math.round((plan.freedomGap.currentPassiveMonthly / plan.freedomGap.freedomNumberMonthly) * 100))}% of your freedom gap closed
-                </p>
-              </div>
-            )}
+              );
+            })()}
           </div>
+
+          {/* ── Vision moment cards (Part 1) ─────────────────────────── */}
+          {/* First time seeing a plan */}
+          {!previousPlan && visionText && plan && (
+            <VisionMomentCard
+              visionText={visionText}
+              message={`This is what you're building toward. Your plan puts you there in ${plan.freedomGap.yearsToFreedom} year${plan.freedomGap.yearsToFreedom !== 1 ? 's' : ''}.`}
+            />
+          )}
+          {/* Freedom date moved closer */}
+          {previousPlan && plan && visionText &&
+            (previousPlan.freedomGap.projectedFreedomYear - plan.freedomGap.projectedFreedomYear) > 0 && (
+            <VisionMomentCard
+              visionText={visionText}
+              message={`You just got ${(previousPlan.freedomGap.projectedFreedomYear - plan.freedomGap.projectedFreedomYear) * 12} months closer to that day.`}
+              suffix="Keep going."
+            />
+          )}
+
+          {/* ── What changed card ────────────────────────────────────── */}
+          {previousPlan && plan && (
+            <PlanDeltaCard prev={previousPlan} next={plan} />
+          )}
 
           {/* ── Narrative card ────────────────────────────────────────── */}
           {narrativeLoading && (
@@ -472,11 +841,12 @@ export default function PlanResultsPage() {
           {plan.taxStrategyStack.strategies.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-50">
-                <h2 className="text-sm font-semibold text-gray-900">
-                  Adding {fmt(plan.taxStrategyStack.addedToDeployableCapital)}/year to your asset-building capacity
+                <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                  {fmt(plan.deployableCapitalPerYear)}/yr deployable capital
+                  <Tooltip content={`This is how much you can invest toward assets each year. It combines your stated capital (${fmt(plan.deployableCapitalPerYear - plan.taxStrategyStack.addedToDeployableCapital)}/yr) plus your identified tax savings (${fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr from ACTIVE strategies). Tax savings directly accelerate asset acquisition.`} />
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Tax savings redirected from the IRS to your investment engine
+                  Including {fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr in tax savings redirected to your investment engine
                 </p>
               </div>
               <div className="divide-y divide-gray-50">
@@ -492,6 +862,16 @@ export default function PlanResultsPage() {
                   <span className="text-sm font-semibold text-gray-900">Total added to plan</span>
                   <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmt(plan.taxStrategyStack.addedToDeployableCapital)}/yr</span>
                 </div>
+                {(plan.taxStrategyStack.rentalTaxUnlockAnnualValue ?? 0) > 0 && (
+                  <div className="flex items-start gap-2.5 px-5 py-3 bg-amber-50/70 border-t border-amber-100">
+                    <svg className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      +{fmt(plan.taxStrategyStack.rentalTaxUnlockAnnualValue!)}/yr available once you acquire your first rental — not included above, but added to the roadmap automatically the year after acquisition
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -500,6 +880,18 @@ export default function PlanResultsPage() {
           {plan.assetRoadmap.length > 0 && (
             <RoadmapTable rows={plan.assetRoadmap} freedomTarget={plan.freedomGap.freedomNumberMonthly} />
           )}
+
+          {/* ── Adjust assumptions CTA ────────────────────────────────── */}
+          <Link
+            href="/dashboard/plan/assumptions"
+            className="flex items-center justify-between w-full bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:bg-gray-50 transition group"
+          >
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Adjust assumptions &amp; run scenarios</p>
+              <p className="text-xs text-gray-400 mt-0.5">Fine-tune income projections and see how your freedom date changes</p>
+            </div>
+            <span className="text-emerald-600 font-bold text-sm shrink-0 ml-3 group-hover:translate-x-0.5 transition-transform">→</span>
+          </Link>
 
           {/* ── Section 5: CTA ────────────────────────────────────────── */}
           <div className="pb-4">

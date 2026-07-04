@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
@@ -155,6 +155,8 @@ function Section({ title, helper, children }: {
 
 export default function ConstraintsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isFresh = searchParams.get('fresh') === 'true';
   const [session, setSession]             = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -173,7 +175,7 @@ export default function ConstraintsPage() {
     sb.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
-      if (s) {
+      if (s && !isFresh) {
         const { data } = await sb
           .from('user_constraints')
           .select('capital_per_year, hours_per_week, risk_tolerance, hard_constraints')

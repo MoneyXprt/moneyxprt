@@ -14,6 +14,87 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
+// ─── Strategy deep dive content ───────────────────────────────────────────────
+
+interface DeepDive {
+  whatItIs: string;
+  whatYouNeed: string[];
+  commonMistake: string;
+  yourNumbers: (r: StrategyResult) => string;
+}
+
+const DEEP_DIVES: Partial<Record<string, DeepDive>> = {
+  'augusta-rule': {
+    whatItIs: 'The IRC §280A(g) exclusion lets homeowners rent their residence to their business for up to 14 days/year without reporting the income. The business deducts the expense; you receive it tax-free.',
+    whatYouNeed: ['Written rental agreement between you and your business', 'Fair market rate documentation (comparable venue quotes)', 'Written agenda with attendees and business purpose', 'Records kept for 7 years'],
+    commonMistake: 'Not documenting the business purpose. The IRS requires a legitimate business meeting, not just a payment.',
+    yourNumbers: (r) => {
+      const taxFree = Math.round(r.estimatedAnnualValue / 0.33);
+      return `${fmt(taxFree)}/yr tax-free (${fmt(Math.round(taxFree / 14))}/day × 14 days). At a 33% rate, that's ${fmt(r.estimatedAnnualValue)}/yr kept instead of taxed.`;
+    },
+  },
+  'depreciation': {
+    whatItIs: 'IRC §168 lets you deduct a rental property\'s building cost (not land) over 27.5 years. With REPS, these paper losses offset your W-2 income dollar for dollar.',
+    whatYouNeed: ['A rental property', 'Spouse logging 750+ real estate hours/year (more than any other profession)', 'Contemporaneous time logs — not reconstructed at year end', 'Cost segregation study for maximum first-year deductions'],
+    commonMistake: 'Reconstructing time logs at year end. The Tax Court consistently rejects retroactively created logs.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in tax savings as rental depreciation losses offset your ordinary income directly.`,
+  },
+  'solo-k': {
+    whatItIs: 'A Solo 401(k) lets self-employed individuals contribute as both employee (up to $23,500 in 2026) and employer (up to 25% of net SE income). Total possible contribution: $70,000+.',
+    whatYouNeed: ['Business with net self-employment income', 'An EIN', 'Solo 401(k) account at Fidelity, Vanguard, or Schwab', 'Account opened and funded by December 31'],
+    commonMistake: 'Contributing before calculating net SE income. Deduction is capped at actual net earnings after the SE tax deduction.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in tax savings from maximizing Solo 401(k) contributions.`,
+  },
+  'backdoor-roth': {
+    whatItIs: 'High earners above the Roth IRA limit ($236,000 MFJ in 2026) can contribute to a Traditional IRA and immediately convert to Roth. No income limit on conversions.',
+    whatYouNeed: ['Traditional IRA with near-zero pre-tax balance (avoid pro-rata taxation)', '$7,000/spouse to contribute ($8,000 if 50+)', 'IRA custodian that allows immediate conversions (Fidelity, Schwab)'],
+    commonMistake: 'Having pre-tax IRA balances. Even a small traditional IRA triggers the pro-rata rule and partially taxes your conversion.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in long-term Roth advantage — $14,000/yr compounding tax-free forever.`,
+  },
+  'hire-kids': {
+    whatItIs: 'Pay your children (ages 7–17) for legitimate work in your business. In a sole prop or parent-owned LLC, wages up to the standard deduction ($14,600 in 2026) are tax-free to the child and deductible to you.',
+    whatYouNeed: ['Qualifying business structure (sole prop or parent-owned single-member LLC)', 'Legitimate, age-appropriate work at fair market rate', 'Payroll records, time sheets, and annual W-2s per child'],
+    commonMistake: 'Paying kids without documented work. The IRS requires actual services at market rate with contemporaneous records.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in combined savings — your deduction plus the income your child receives below their standard deduction.`,
+  },
+  'accountable-plan': {
+    whatItIs: 'A formal accountable plan lets your business reimburse legitimate expenses tax-free. The company deducts the expense; you receive the reimbursement without income tax.',
+    whatYouNeed: ['Written accountable plan document', 'Reimbursements for actual business expenses only (home office, phone, vehicle)', 'Expense reports with receipts submitted within 60 days', 'Unspent advances returned within 120 days'],
+    commonMistake: 'Mixing personal and business expenses. Every reimbursed item needs a clear, documented business purpose.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in expenses now reimbursed tax-free instead of paid with after-tax dollars.`,
+  },
+  'qbi': {
+    whatItIs: 'Section 199A lets qualifying business owners deduct up to 20% of qualified business income. On $200,000 in QBI, that\'s a $40,000 deduction at the federal level.',
+    whatYouNeed: ['QBI from a pass-through entity (S-Corp, LLC, sole prop)', 'Income below phase-out thresholds ($383,900 MFJ in 2026)', 'Business that is not a Specified Service Trade (or income below the SSTB threshold)'],
+    commonMistake: 'Assuming you don\'t qualify because you\'re a professional. Many service businesses qualify below the income threshold.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in federal tax savings from the 20% QBI deduction on your business income.`,
+  },
+  'hsa': {
+    whatItIs: 'A Health Savings Account is the only triple-tax-advantaged account: deductible contributions, tax-free growth, tax-free withdrawals for medical expenses.',
+    whatYouNeed: ['A High-Deductible Health Plan (HDHP) — min. deductible $1,650 individual / $3,300 family in 2026', 'No disqualifying coverage (Medicare, non-HDHP FSA)', 'HSA account at Fidelity, Lively, or your bank', 'Contributions by April 15 of following year'],
+    commonMistake: 'Spending the HSA on current medical costs. The best strategy: pay out-of-pocket now, let HSA investments compound, reimburse yourself tax-free decades later.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in immediate tax savings — plus decades of tax-free investment growth on top.`,
+  },
+  'mega-backdoor-roth': {
+    whatItIs: 'If your 401(k) allows after-tax contributions and in-service conversions, you can contribute up to an additional $43,500/yr (2026) and convert it to Roth.',
+    whatYouNeed: ['A 401(k) that explicitly allows after-tax (non-Roth) contributions', 'The plan must also allow in-service withdrawals or in-plan Roth conversions', 'Written confirmation from your plan administrator', 'Convert immediately after contributing to minimize taxable gains'],
+    commonMistake: 'Assuming your plan allows this. Most plans do NOT allow in-service withdrawals. Verify with your plan administrator before contributing.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in long-term advantage — up to $43,500 more/year growing tax-free in Roth.`,
+  },
+  's-corp-election': {
+    whatItIs: 'S-Corp election lets you split business income into salary (subject to payroll tax) and distributions (not). On $200,000 profit with a $100,000 salary, you save ~$7,650/yr in SE taxes.',
+    whatYouNeed: ['Business with net profit above ~$40,000', 'Form 2553 filed by March 15 for current-year effect', '"Reasonable compensation" salary documented and paid quarterly', 'Quarterly payroll tax filings (Form 941) and annual W-2'],
+    commonMistake: 'Setting salary too low. The IRS requires reasonable compensation for the owner\'s services — below-market salaries trigger audits.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in SE tax savings by routing profit above your reasonable salary as S-Corp distributions.`,
+  },
+  'reps': {
+    whatItIs: 'Real Estate Professional Status unlocks rental losses to offset all ordinary income — including W-2. Requires 750+ hours/year in real estate and more time in RE than any other profession.',
+    whatYouNeed: ['Spouse (or you) with 750+ qualifying RE hours/year', 'Real estate must be more than 50% of that person\'s total work hours', 'Contemporaneous time logs kept week by week', 'Qualifying activities: acquisition, property management, construction management, leasing'],
+    commonMistake: 'Reconstructing time logs at year end. The Tax Court has consistently rejected retroactively created logs.',
+    yourNumbers: (r) => `${fmt(r.estimatedAnnualValue)}/yr in tax savings as rental depreciation losses are unlocked to offset your W-2 income directly.`,
+  },
+};
+
 // ─── Auth gate ────────────────────────────────────────────────────────────────
 
 function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
@@ -77,18 +158,70 @@ function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
 // ─── Strategy cards ───────────────────────────────────────────────────────────
 
 function ActiveCard({ r }: { r: StrategyResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const dive = DEEP_DIVES[r.id];
+
   return (
-    <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-0.5" />
-          <span className="text-sm font-semibold text-gray-900">{r.name}</span>
+    <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-0.5" />
+            <span className="text-sm font-semibold text-gray-900">{r.name}</span>
+          </div>
+          <span className="text-base font-bold text-emerald-700 tabular-nums shrink-0">
+            {fmt(r.estimatedAnnualValue)}<span className="text-xs font-normal text-emerald-600">/yr</span>
+          </span>
         </div>
-        <span className="text-base font-bold text-emerald-700 tabular-nums shrink-0">
-          {fmt(r.estimatedAnnualValue)}<span className="text-xs font-normal text-emerald-600">/yr</span>
-        </span>
+        <p className="text-xs text-gray-600 leading-relaxed pl-4 mb-3">{r.reason}</p>
+        {dive && (
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            className="ml-4 flex items-center gap-1 text-[10px] font-semibold text-emerald-700 hover:text-emerald-900 transition"
+          >
+            <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+            {expanded ? 'Close' : 'Learn more'}
+          </button>
+        )}
       </div>
-      <p className="text-xs text-gray-600 leading-relaxed pl-4">{r.reason}</p>
+
+      {expanded && dive && (
+        <div className="border-t border-emerald-100 bg-white px-4 pb-4 pt-3 space-y-4">
+          {/* What it is */}
+          <div>
+            <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1">What it is</p>
+            <p className="text-xs text-gray-700 leading-relaxed">{dive.whatItIs}</p>
+          </div>
+
+          {/* What you need */}
+          <div>
+            <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">What you need</p>
+            <ul className="space-y-1">
+              {dive.whatYouNeed.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed">
+                  <span className="text-emerald-500 font-bold shrink-0 mt-0.5">✓</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Common mistake */}
+          <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5">
+            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-1">Common mistake</p>
+            <p className="text-xs text-amber-800 leading-relaxed">{dive.commonMistake}</p>
+          </div>
+
+          {/* Your numbers */}
+          <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5">
+            <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1">Your numbers</p>
+            <p className="text-xs text-emerald-800 leading-relaxed font-medium">{dive.yourNumbers(r)}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -166,22 +299,46 @@ function Section({
   );
 }
 
-// ─── Hero number ──────────────────────────────────────────────────────────────
+// ─── Threat hero (Defend Part 2) ─────────────────────────────────────────────
 
-function HeroStat({ value, snapshotDate }: { value: number; snapshotDate?: string }) {
+function ThreatHero({ value, snapshotDate }: { value: number; snapshotDate?: string }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Annual Tax Savings Identified</p>
-      <p className="text-4xl font-extrabold text-gray-900 tabular-nums leading-none">
+      <p className="text-sm text-gray-400 mb-1.5">Without these strategies, you overpay:</p>
+      <p className="text-4xl font-extrabold text-[#C9A84C] tabular-nums leading-none">
         {fmt(value)}
-        <span className="text-lg font-normal text-gray-400 ml-1">/yr</span>
+        <span className="text-lg font-semibold text-gray-500 ml-1.5">/year in unnecessary taxes</span>
       </p>
-      <p className="mt-2 text-sm text-gray-500">
-        across all available strategies — based on your financial snapshot
-        {snapshotDate && (
-          <span className="text-gray-400"> from {new Date(snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-        )}
-        .
+      <p className="mt-3 text-base font-semibold text-emerald-600">Here&apos;s how to keep it.</p>
+      {snapshotDate && (
+        <p className="mt-1 text-xs text-gray-400">
+          Based on your snapshot from {new Date(snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── First-time audit banner (Defend Part 5) ──────────────────────────────────
+
+function FirstAuditBanner({ totalSavings, onDismiss }: { totalSavings: number; onDismiss: () => void }) {
+  const tenYear = Math.round(totalSavings * 14.78);
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 relative">
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="absolute top-3 right-3 text-amber-400 hover:text-amber-700 transition text-sm leading-none"
+      >
+        ✕
+      </button>
+      <p className="text-sm font-bold text-amber-900 pr-6">Your tax situation in plain language</p>
+      <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
+        At your income level, the default path costs you{' '}
+        <strong>{fmt(totalSavings)}</strong> in avoidable taxes every year. That&apos;s{' '}
+        <strong>{fmt(tenYear)}</strong> over 10 years that could have been building assets instead.
+        This audit shows you how to stop it.
       </p>
     </div>
   );
@@ -210,6 +367,16 @@ export default function AuditResultsPage() {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
   const [hasSnapshot, setHasSnapshot] = useState(true);
+  const [firstAuditDismissed, setFirstAuditDismissed] = useState(false);
+
+  useEffect(() => {
+    setFirstAuditDismissed(!!localStorage.getItem('first_audit_view_dismissed'));
+  }, []);
+
+  function dismissFirstAudit() {
+    localStorage.setItem('first_audit_view_dismissed', '1');
+    setFirstAuditDismissed(true);
+  }
 
   // ── Session init ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -342,8 +509,13 @@ export default function AuditResultsPage() {
         {/* ── Results ────────────────────────────────────────────────── */}
         {!loading && !error && results && (
           <>
-            {/* Hero stat */}
-            <HeroStat value={totalActiveValue} snapshotDate={snapshotDate} />
+            {/* First-time audit banner (Defend Part 5) */}
+            {!firstAuditDismissed && totalActiveValue > 0 && (
+              <FirstAuditBanner totalSavings={totalActiveValue} onDismiss={dismissFirstAudit} />
+            )}
+
+            {/* Threat hero (Defend Part 2) */}
+            <ThreatHero value={totalActiveValue} snapshotDate={snapshotDate} />
 
             {/* Available Now */}
             <Section

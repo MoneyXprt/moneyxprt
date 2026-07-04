@@ -1,76 +1,75 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { saveSnapshot, getLatestSnapshot } from '@/app/lib/snapshots';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
-// ─── Form state shape ─────────────────────────────────────────────────────────
-// All numeric fields are kept as strings so inputs can be empty without
-// becoming NaN. Parsed to numbers only on final submit.
+// ─── Form state ───────────────────────────────────────────────────────────────
 
 interface FormState {
-  // Step 1 — Income
-  w2Income:           string;
-  bonusIncome:        string;   // gross total
-  bonusDefers:        boolean;  // UI toggle: does any of this get deferred?
-  bonusDeferred:      string;   // amount deferred (user input)
-  income1099:         string;
-  spouseWorks:        boolean;
-  // Step 1 — Spouse income details (shown when spouseWorks = true)
-  spouseIncomeType:              'w2' | 'self_employment' | 'both' | '';
-  spouseW2Income:                string;
-  spouseBusinessRevenue:         string;
-  spouseBusinessNetProfit:       string;
-  spouseHoursPerWeekInBusiness:  string;
-  spouseState:                   string;
-  // Step 2 — Household
-  filingStatus:       'single' | 'mfj';
-  state:              string;
-  dependentsUnder18:  string;
-  hasBusinessEntity:  boolean;
-  businessRevenue:    string;
-  // Step 2 — Primary business details
-  primaryBusinessNetProfit:       string;
-  primaryBusinessType:            string;
-  primaryHoursPerWeekInBusiness:  string;
-  // Step 2 — Spouse business entity (shown when hasBusinessEntity && spouseWorks)
-  spouseHasSeparateBusiness:  boolean;
-  spouseBusinessType:         string;
-  // Step 3 — Financial Position
-  currentTaxPaid:        string;
-  monthlySpend:          string;
-  emergencyFund:         string;
-  retirementBalance:     string;
-  homeEquity:            string;
-  traditionalIraBalance: string;
-  monthlyRentalIncome:   string;
-  monthlyDividendIncome: string;
-  hasHsaAvailable:       boolean;
-  // Step 4 — Real Estate & Goals
-  consideringRealEstate:          boolean;
-  plannedPropertyValue:           string;
-  repsQualified:                  boolean | undefined;
-  employer401kAllowsAfterTax:     boolean | undefined;
+  // S1 — Income
+  w2Income: string; bonusIncome: string; bonusDefers: boolean; bonusDeferred: string;
+  income1099: string; carAllowanceAnnual: string; otherIncomeAnnual: string;
+  monthlyRentalIncome: string; monthlyDividendIncome: string;
+  spouseWorks: boolean; spouseIncomeType: 'w2' | 'self_employment' | 'both' | '';
+  spouseW2Income: string; spouseBusinessRevenue: string; spouseBusinessNetProfit: string;
+  // S2 — Tax
+  filingStatus: 'single' | 'mfj' | 'hoh'; state: string; currentTaxPaid: string;
+  hasBusinessEntity: boolean; businessRevenue: string; primaryBusinessNetProfit: string;
+  primaryBusinessType: string; primaryHoursPerWeekInBusiness: string;
+  spouseHasSeparateBusiness: boolean; spouseBusinessType: string;
+  hasHsaAvailable: boolean; employer401kAllowsAfterTax: boolean | undefined;
+  hasCpa: boolean | undefined; cpaProactive: boolean | undefined;
+  // S3 — Balance Sheet
+  primaryResidenceValue: string; mortgageBalance: string;
+  currentlyOwnsRental: boolean; rentalPropertyValue: string; rentalMortgageBalance: string;
+  retirementBalance: string; traditionalIraBalance: string;
+  taxableBrokerageBalance: string; businessEquityValue: string;
+  // S4 — Liabilities
+  hasCarLoan: boolean; hasStudentLoan: boolean; hasPersonalLoan: boolean;
+  hasCreditCard: boolean; hasBusinessLoan: boolean;
+  carLoanBalance: string; carLoanRate: string; carLoanPayment: string;
+  studentLoanBalance: string; studentLoanRate: string;
+  personalLoanBalance: string; personalLoanRate: string;
+  creditCardBalance: string; creditCardRate: string;
+  businessLoanBalance: string; businessLoanRate: string;
+  // S5 — Cash Flow
+  essentialMonthlySpend: string; discretionaryMonthlySpend: string; emergencyFund: string;
+  // S6 — Household
+  dependentsUnder18: string; dependentAges: string; spouseHoursPerWeekInBusiness: string;
 }
 
-const EMPTY_FORM: FormState = {
-  w2Income: '', bonusIncome: '', bonusDefers: false, bonusDeferred: '', income1099: '', spouseWorks: false,
-  spouseIncomeType: '', spouseW2Income: '', spouseBusinessRevenue: '', spouseBusinessNetProfit: '',
-  spouseHoursPerWeekInBusiness: '', spouseState: 'CA',
-  filingStatus: 'mfj', state: 'CA',
-  dependentsUnder18: '', hasBusinessEntity: false, businessRevenue: '',
-  primaryBusinessNetProfit: '', primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
-  spouseHasSeparateBusiness: false, spouseBusinessType: '',
-  currentTaxPaid: '', monthlySpend: '', emergencyFund: '',
-  retirementBalance: '', homeEquity: '', traditionalIraBalance: '',
+const EMPTY: FormState = {
+  w2Income: '', bonusIncome: '', bonusDefers: false, bonusDeferred: '',
+  income1099: '', carAllowanceAnnual: '', otherIncomeAnnual: '',
   monthlyRentalIncome: '', monthlyDividendIncome: '',
-  hasHsaAvailable: false,
-  consideringRealEstate: false, plannedPropertyValue: '',
-  repsQualified: undefined, employer401kAllowsAfterTax: undefined,
+  spouseWorks: false, spouseIncomeType: '', spouseW2Income: '',
+  spouseBusinessRevenue: '', spouseBusinessNetProfit: '',
+  filingStatus: 'mfj', state: 'CA', currentTaxPaid: '',
+  hasBusinessEntity: false, businessRevenue: '', primaryBusinessNetProfit: '',
+  primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
+  spouseHasSeparateBusiness: false, spouseBusinessType: '',
+  hasHsaAvailable: false, employer401kAllowsAfterTax: undefined,
+  hasCpa: undefined, cpaProactive: undefined,
+  primaryResidenceValue: '', mortgageBalance: '',
+  currentlyOwnsRental: false, rentalPropertyValue: '', rentalMortgageBalance: '',
+  retirementBalance: '', traditionalIraBalance: '', taxableBrokerageBalance: '', businessEquityValue: '',
+  hasCarLoan: false, hasStudentLoan: false, hasPersonalLoan: false,
+  hasCreditCard: false, hasBusinessLoan: false,
+  carLoanBalance: '', carLoanRate: '', carLoanPayment: '',
+  studentLoanBalance: '', studentLoanRate: '',
+  personalLoanBalance: '', personalLoanRate: '',
+  creditCardBalance: '', creditCardRate: '',
+  businessLoanBalance: '', businessLoanRate: '',
+  essentialMonthlySpend: '', discretionaryMonthlySpend: '', emergencyFund: '',
+  dependentsUnder18: '', dependentAges: '', spouseHoursPerWeekInBusiness: '',
 };
+
+const n = (v: string) => (v === '' ? 0 : parseFloat(v.replace(/,/g, '')) || 0);
+const rnd = (v: number, nearest: number) => v > 0 ? String(Math.round(v / nearest) * nearest) : '';
 
 function snapshotToForm(s: FinancialSnapshot): FormState {
   return {
@@ -79,50 +78,73 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     bonusDefers:        s.bonusDeferred > 0,
     bonusDeferred:      String(s.bonusDeferred || ''),
     income1099:         String(s.income1099 || ''),
-    spouseWorks:        s.spouseWorks,
-    spouseIncomeType:             s.spouseW2Income > 0 && s.spouseBusinessRevenue > 0 ? 'both'
-                                : s.spouseW2Income > 0 ? 'w2'
-                                : s.spouseBusinessRevenue > 0 ? 'self_employment' : '',
-    spouseW2Income:               String(s.spouseW2Income || ''),
-    spouseBusinessRevenue:        String(s.spouseBusinessRevenue || ''),
-    spouseBusinessNetProfit:      String(s.spouseBusinessNetProfit || ''),
-    spouseHoursPerWeekInBusiness: String(s.spouseHoursPerWeekInBusiness || ''),
-    spouseState:                  s.state,
-    filingStatus:       s.filingStatus,
-    state:              s.state,
-    dependentsUnder18:  String(s.dependentsUnder18 || ''),
-    hasBusinessEntity:  s.hasBusinessEntity,
-    businessRevenue:    String(s.businessRevenue || ''),
-    primaryBusinessNetProfit:      String(s.primaryBusinessNetProfit || ''),
-    primaryBusinessType:           s.primaryBusinessType || '',
-    primaryHoursPerWeekInBusiness: String(s.primaryHoursPerWeekInBusiness || ''),
-    spouseHasSeparateBusiness:     s.spouseBusinessType !== '',
-    spouseBusinessType:            s.spouseBusinessType || '',
-    currentTaxPaid:        String(s.currentTaxPaid || ''),
-    monthlySpend:          String(s.monthlySpend || ''),
-    emergencyFund:         String(s.emergencyFund || ''),
-    retirementBalance:     String(s.retirementBalance || ''),
-    homeEquity:            String(s.homeEquity || ''),
-    traditionalIraBalance: String(s.traditionalIraBalance || ''),
+    carAllowanceAnnual: String(s.carAllowanceAnnual || ''),
+    otherIncomeAnnual:  String(s.otherIncomeAnnual || ''),
     monthlyRentalIncome:   String(s.monthlyRentalIncome || ''),
     monthlyDividendIncome: String(s.monthlyDividendIncome || ''),
-    hasHsaAvailable:       s.hasHsaAvailable,
-    consideringRealEstate: s.consideringRealEstate,
-    plannedPropertyValue: String(s.plannedPropertyValue || ''),
-    repsQualified:      s.repsQualified,
+    spouseWorks:        s.spouseWorks,
+    spouseIncomeType:   s.spouseW2Income > 0 && s.spouseBusinessRevenue > 0 ? 'both'
+                      : s.spouseW2Income > 0 ? 'w2'
+                      : s.spouseBusinessRevenue > 0 ? 'self_employment' : '',
+    spouseW2Income:          String(s.spouseW2Income || ''),
+    spouseBusinessRevenue:   String(s.spouseBusinessRevenue || ''),
+    spouseBusinessNetProfit: String(s.spouseBusinessNetProfit || ''),
+    filingStatus:       s.filingStatus,
+    state:              s.state,
+    currentTaxPaid:     rnd(s.currentTaxPaid, 5000),
+    hasBusinessEntity:              s.hasBusinessEntity,
+    businessRevenue:                String(s.businessRevenue || ''),
+    primaryBusinessNetProfit:       String(s.primaryBusinessNetProfit || ''),
+    primaryBusinessType:            s.primaryBusinessType || '',
+    primaryHoursPerWeekInBusiness:  String(s.primaryHoursPerWeekInBusiness || ''),
+    spouseHasSeparateBusiness:  s.spouseBusinessType !== '',
+    spouseBusinessType:         s.spouseBusinessType || '',
+    hasHsaAvailable:     s.hasHsaAvailable,
     employer401kAllowsAfterTax: s.employer401kAllowsAfterTax,
+    hasCpa:              s.hasCpa,
+    cpaProactive:        s.cpaProactive,
+    // Balance sheet: pre-populate primaryResidenceValue from homeEquity (reverse not possible)
+    primaryResidenceValue: rnd(s.homeEquity, 10000),
+    mortgageBalance:       '',
+    currentlyOwnsRental:   s.currentlyOwnsRental,
+    rentalPropertyValue:   rnd(s.rentalPropertyValue, 10000),
+    rentalMortgageBalance: rnd(s.rentalMortgageBalance, 10000),
+    retirementBalance:     rnd(s.retirementBalance, 5000),
+    traditionalIraBalance: rnd(s.traditionalIraBalance, 100),
+    taxableBrokerageBalance: rnd(s.taxableBrokerageBalance, 1000),
+    businessEquityValue:   rnd(s.businessEquityValue, 10000),
+    hasCarLoan:     s.carLoanBalance > 0,
+    hasStudentLoan: s.studentLoanBalance > 0,
+    hasPersonalLoan: s.personalLoanBalance > 0,
+    hasCreditCard:  s.creditCardBalance > 0,
+    hasBusinessLoan: s.businessLoanBalance > 0,
+    carLoanBalance:  String(s.carLoanBalance || ''),
+    carLoanRate:     String(s.carLoanRate || ''),
+    carLoanPayment:  String(s.carLoanPayment || ''),
+    studentLoanBalance: String(s.studentLoanBalance || ''),
+    studentLoanRate:    String(s.studentLoanRate || ''),
+    personalLoanBalance: String(s.personalLoanBalance || ''),
+    personalLoanRate:    String(s.personalLoanRate || ''),
+    creditCardBalance:   String(s.creditCardBalance || ''),
+    creditCardRate:      String(s.creditCardRate || ''),
+    businessLoanBalance: String(s.businessLoanBalance || ''),
+    businessLoanRate:    String(s.businessLoanRate || ''),
+    essentialMonthlySpend:      rnd(s.essentialMonthlySpend, 500),
+    discretionaryMonthlySpend:  rnd(s.discretionaryMonthlySpend, 100),
+    emergencyFund:              rnd(s.emergencyFund, 1000),
+    dependentsUnder18: String(s.dependentsUnder18 || ''),
+    dependentAges:     s.dependentAges || '',
+    spouseHoursPerWeekInBusiness: String(s.spouseHoursPerWeekInBusiness || ''),
   };
 }
 
-const n = (v: string) => (v === '' ? 0 : parseFloat(v) || 0);
-
-// ─── Step config ──────────────────────────────────────────────────────────────
-
-const STEPS = [
+const SECTIONS = [
   { label: 'Income' },
+  { label: 'Tax Situation' },
+  { label: 'Balance Sheet' },
+  { label: 'Liabilities' },
+  { label: 'Cash Flow' },
   { label: 'Household' },
-  { label: 'Financial Position' },
-  { label: 'Real Estate & Goals' },
 ];
 
 const US_STATES = [
@@ -136,54 +158,80 @@ const US_STATES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-// ─── Reusable sub-components ──────────────────────────────────────────────────
+// ─── UI components ────────────────────────────────────────────────────────────
 
-function DollarInput({
-  label, hint, value, onChange, placeholder = '0',
-}: {
-  label: string; hint?: string; value: string;
-  onChange: (v: string) => void; placeholder?: string;
+const BASE_INPUT = 'w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition';
+
+function DollarInput({ label, hint, value, onChange, placeholder = '0' }: {
+  label: string; hint?: string; value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-gray-400 mb-1.5 leading-relaxed">{hint}</p>}
       <div className="relative">
         <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-sm pointer-events-none">$</span>
-        <input
-          type="number"
-          min="0"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full pl-7 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-        />
+        <input type="number" min="0" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+          className={`${BASE_INPUT} pl-7`} />
       </div>
     </div>
   );
 }
 
-function Toggle({
-  label, hint, value, onChange,
-}: {
+function SuffixInput({ label, hint, value, onChange, placeholder = '0', suffix }: {
+  label: string; hint?: string; value: string; onChange: (v: string) => void; placeholder?: string; suffix: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1.5 leading-relaxed">{hint}</p>}
+      <div className="relative">
+        <input type="number" min="0" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+          className={`${BASE_INPUT} pr-16`} />
+        <span className="absolute inset-y-0 right-3 flex items-center text-gray-400 text-xs pointer-events-none">{suffix}</span>
+      </div>
+    </div>
+  );
+}
+
+function TextInput({ label, hint, value, onChange, placeholder = '' }: {
+  label: string; hint?: string; value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1.5 leading-relaxed">{hint}</p>}
+      <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className={BASE_INPUT} />
+    </div>
+  );
+}
+
+function SelectInput({ label, value, onChange, children }: {
+  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className={`${BASE_INPUT} bg-white`}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
+function Toggle({ label, hint, value, onChange }: {
   label: string; hint?: string; value: boolean; onChange: (v: boolean) => void;
 }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
-      <div className="inline-flex rounded-xl overflow-hidden border border-gray-200 text-sm">
+      {hint && <p className="text-xs text-gray-400 mb-1.5 leading-relaxed">{hint}</p>}
+      <div className="inline-flex rounded-xl overflow-hidden border border-gray-200">
         {([true, false] as const).map(opt => (
-          <button
-            key={String(opt)}
-            type="button"
-            onClick={() => onChange(opt)}
-            className={`px-5 py-2 text-xs font-medium transition ${
-              value === opt
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-500 hover:bg-gray-50'
-            }`}
-          >
+          <button key={String(opt)} type="button" onClick={() => onChange(opt)}
+            className={`px-5 py-2 text-xs font-medium transition ${value === opt ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
             {opt ? 'Yes' : 'No'}
           </button>
         ))}
@@ -192,34 +240,20 @@ function Toggle({
   );
 }
 
-function ThreeWayToggle({
-  label, hint, value, onChange,
-}: {
-  label: string; hint?: string;
-  value: boolean | undefined;
-  onChange: (v: boolean | undefined) => void;
+function ThreeWayToggle({ label, hint, value, onChange }: {
+  label: string; hint?: string; value: boolean | undefined; onChange: (v: boolean | undefined) => void;
 }) {
   const opts: { label: string; value: boolean | undefined }[] = [
-    { label: 'Yes',      value: true },
-    { label: 'No',       value: false },
-    { label: 'Not sure', value: undefined },
+    { label: 'Yes', value: true }, { label: 'No', value: false }, { label: 'Not sure', value: undefined },
   ];
   return (
     <div>
       <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
-      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-gray-400 mb-1.5 leading-relaxed">{hint}</p>}
       <div className="inline-flex rounded-xl overflow-hidden border border-gray-200">
         {opts.map(opt => (
-          <button
-            key={opt.label}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            className={`px-4 py-2 text-xs font-medium transition ${
-              value === opt.value
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-500 hover:bg-gray-50'
-            }`}
-          >
+          <button key={opt.label} type="button" onClick={() => onChange(opt.value)}
+            className={`px-4 py-2 text-xs font-medium transition ${value === opt.value ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
             {opt.label}
           </button>
         ))}
@@ -228,38 +262,48 @@ function ThreeWayToggle({
   );
 }
 
-// ─── Auth gate (same pattern as logs page) ────────────────────────────────────
+function Divider({ label }: { label: string }) {
+  return <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide pt-1">{label}</p>;
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-xs font-semibold text-gray-900 tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+// ─── Auth gate ────────────────────────────────────────────────────────────────
 
 function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent]   = useState(false);
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState<string | null>(null);
 
-  const handleMagicLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true); setError(null);
-    const sb = getBrowserSupabaseClient();
-    const { error: err } = await sb.auth.signInWithOtp({
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const { error } = await getBrowserSupabaseClient().auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: `${window.location.origin}/dashboard/audit` },
     });
-    setLoading(false);
-    if (err) { setError(err.message); } else { setSent(true); }
+    setBusy(false);
+    if (error) setErr(error.message); else setSent(true);
   };
 
   useEffect(() => {
-    const sb = getBrowserSupabaseClient();
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_evt, session) => {
-      if (session) onSession(session);
-    });
+    const { data: { subscription } } = getBrowserSupabaseClient().auth.onAuthStateChange(
+      (_e, s) => { if (s) onSession(s); },
+    );
     return () => subscription.unsubscribe();
   }, [onSession]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-        <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-[#1B3A2D] flex items-center justify-center mb-4">
           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
@@ -267,19 +311,19 @@ function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
         <h1 className="text-xl font-semibold text-gray-900">Sign in to continue</h1>
         <p className="mt-1 text-sm text-gray-500 mb-6">We&apos;ll send a one-click sign-in link.</p>
         {sent ? (
-          <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-4 text-sm text-emerald-700">
-            <p className="font-medium">Check your email</p>
-            <p className="mt-0.5 text-emerald-600">Magic link sent to <strong>{email}</strong>.</p>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-4">
+            <p className="text-sm font-medium text-emerald-700">Check your email</p>
+            <p className="mt-0.5 text-sm text-emerald-600">Link sent to <strong>{email}</strong></p>
           </div>
         ) : (
-          <form onSubmit={handleMagicLink} className="space-y-3">
+          <form onSubmit={send} className="space-y-3">
             <input type="email" required placeholder="you@example.com" value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" />
-            {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-            <button type="submit" disabled={loading}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition">
-              {loading ? 'Sending…' : 'Send magic link'}
+              className={BASE_INPUT} />
+            {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+            <button type="submit" disabled={busy}
+              className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60 transition">
+              {busy ? 'Sending…' : 'Send magic link'}
             </button>
           </form>
         )}
@@ -292,497 +336,574 @@ function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
 
 export default function AuditPage() {
   const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
+  const searchParams = useSearchParams();
+  const freshParam = searchParams.get('fresh') === 'true';
+
+  const [session, setSession]       = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [section, setSection]       = useState(1);
+  const [form, setForm]             = useState<FormState>(EMPTY);
+  const [saving, setSaving]         = useState(false);
+  const [saveError, setSaveError]   = useState<string | null>(null);
 
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  // ── Session + pre-populate from latest snapshot ──────────────────────────
+  // ── Auth + pre-populate ──────────────────────────────────────────────────
   useEffect(() => {
+    const isFresh = freshParam ||
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('mxprt_fresh_audit') === '1');
+    if (isFresh && typeof sessionStorage !== 'undefined') sessionStorage.removeItem('mxprt_fresh_audit');
+
     const sb = getBrowserSupabaseClient();
     sb.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
-      if (s) {
+      if (s && !isFresh) {
         try {
           const latest = await getLatestSnapshot();
           if (latest) setForm(snapshotToForm(latest));
-        } catch { /* first time — no snapshot yet */ }
+        } catch { /* first visit */ }
       }
     });
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_evt, s) => {
-      setSession(s);
-    });
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm(prev => ({ ...prev, [key]: value }));
+  const set = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm(prev => ({ ...prev, [key]: value })), []);
 
-  // ── Final submit ─────────────────────────────────────────────────────────
+  // ── Submit ───────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    setSaving(true);
-    setSaveError(null);
+    setSaving(true); setSaveError(null);
     try {
-      const grossBonus      = n(form.bonusIncome);
-      const bonusDeferred   = form.bonusDefers ? Math.min(n(form.bonusDeferred), grossBonus) : 0;
-      const bonusTakenAsCash = grossBonus - bonusDeferred;
+      const essential     = n(form.essentialMonthlySpend);
+      const discretionary = n(form.discretionaryMonthlySpend);
+      const grossBonus    = n(form.bonusIncome);
+      const bonusDeferred = form.bonusDefers ? Math.min(n(form.bonusDeferred), grossBonus) : 0;
 
       const snapshot: FinancialSnapshot = {
-        w2Income:            n(form.w2Income),
-        bonusIncome:         grossBonus,
+        w2Income:           n(form.w2Income),
+        bonusIncome:        grossBonus,
         bonusDeferred,
-        bonusTakenAsCash,
-        income1099:          n(form.income1099),
-        spouseWorks:         form.spouseWorks,
-        filingStatus:        form.filingStatus,
-        state:               form.state,
-        dependentsUnder18:   n(form.dependentsUnder18),
+        bonusTakenAsCash:   grossBonus - bonusDeferred,
+        income1099:         n(form.income1099),
+        carAllowanceAnnual: n(form.carAllowanceAnnual),
+        otherIncomeAnnual:  n(form.otherIncomeAnnual),
+        spouseWorks:        form.spouseWorks,
+        filingStatus:       form.filingStatus === 'hoh' ? 'single' : form.filingStatus,
+        state:              form.state,
+        dependentsUnder18:  n(form.dependentsUnder18),
+        dependentAges:      form.dependentAges.trim(),
         hasBusinessEntity:              form.hasBusinessEntity,
-        businessRevenue:               form.hasBusinessEntity ? n(form.businessRevenue) : 0,
-        primaryBusinessNetProfit:      form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
-        primaryBusinessType:           form.hasBusinessEntity ? form.primaryBusinessType : '',
-        primaryHoursPerWeekInBusiness: form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
-        spouseW2Income:                form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
-                                         ? n(form.spouseW2Income) : 0,
-        spouseBusinessRevenue:         form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
-                                         ? n(form.spouseBusinessRevenue) : 0,
-        spouseBusinessNetProfit:       form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
-                                         ? n(form.spouseBusinessNetProfit) : 0,
-        spouseBusinessType:            form.spouseWorks && form.spouseHasSeparateBusiness
-                                         ? form.spouseBusinessType : '',
-        spouseHoursPerWeekInBusiness:  form.spouseWorks
-                                         ? n(form.spouseHoursPerWeekInBusiness) : 0,
+        businessRevenue:                form.hasBusinessEntity ? n(form.businessRevenue) : 0,
+        primaryBusinessNetProfit:       form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
+        primaryBusinessType:            form.hasBusinessEntity ? form.primaryBusinessType : '',
+        primaryHoursPerWeekInBusiness:  form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
+        spouseW2Income:  form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
+                           ? n(form.spouseW2Income) : 0,
+        spouseBusinessRevenue:  form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
+                                  ? n(form.spouseBusinessRevenue) : 0,
+        spouseBusinessNetProfit: form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
+                                   ? n(form.spouseBusinessNetProfit) : 0,
+        spouseBusinessType:  form.spouseWorks && form.spouseHasSeparateBusiness ? form.spouseBusinessType : '',
+        spouseHoursPerWeekInBusiness: form.spouseWorks ? n(form.spouseHoursPerWeekInBusiness) : 0,
         currentTaxPaid:      n(form.currentTaxPaid),
-        monthlySpend:        n(form.monthlySpend),
-        emergencyFund:       n(form.emergencyFund),
+        hasHsaAvailable:     form.hasHsaAvailable,
+        hasCpa:              form.hasCpa ?? false,
+        cpaProactive:        form.cpaProactive ?? false,
+        homeEquity:          Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance)),
+        currentlyOwnsRental: form.currentlyOwnsRental,
+        rentalPropertyValue: form.currentlyOwnsRental ? n(form.rentalPropertyValue) : 0,
+        rentalMortgageBalance: form.currentlyOwnsRental ? n(form.rentalMortgageBalance) : 0,
         retirementBalance:   n(form.retirementBalance),
-        homeEquity:            n(form.homeEquity),
         traditionalIraBalance: n(form.traditionalIraBalance),
+        taxableBrokerageBalance: n(form.taxableBrokerageBalance),
+        businessEquityValue:   form.hasBusinessEntity ? n(form.businessEquityValue) : 0,
         monthlyRentalIncome:   n(form.monthlyRentalIncome),
         monthlyDividendIncome: n(form.monthlyDividendIncome),
-        hasHsaAvailable:       form.hasHsaAvailable,
-        consideringRealEstate: form.consideringRealEstate,
-        plannedPropertyValue:  form.consideringRealEstate && form.plannedPropertyValue
-          ? n(form.plannedPropertyValue) : undefined,
-        repsQualified:       form.consideringRealEstate ? form.repsQualified : undefined,
+        essentialMonthlySpend:     essential,
+        discretionaryMonthlySpend: discretionary,
+        monthlySpend:              essential + discretionary,
+        emergencyFund:         n(form.emergencyFund),
+        carLoanBalance:   form.hasCarLoan ? n(form.carLoanBalance) : 0,
+        carLoanRate:      form.hasCarLoan ? n(form.carLoanRate) : 0,
+        carLoanPayment:   form.hasCarLoan ? n(form.carLoanPayment) : 0,
+        studentLoanBalance: form.hasStudentLoan ? n(form.studentLoanBalance) : 0,
+        studentLoanRate:    form.hasStudentLoan ? n(form.studentLoanRate) : 0,
+        personalLoanBalance: form.hasPersonalLoan ? n(form.personalLoanBalance) : 0,
+        personalLoanRate:    form.hasPersonalLoan ? n(form.personalLoanRate) : 0,
+        creditCardBalance: form.hasCreditCard ? n(form.creditCardBalance) : 0,
+        creditCardRate:    form.hasCreditCard ? n(form.creditCardRate) : 0,
+        businessLoanBalance: form.hasBusinessLoan ? n(form.businessLoanBalance) : 0,
+        businessLoanRate:    form.hasBusinessLoan ? n(form.businessLoanRate) : 0,
+        debts: [
+          ...(form.hasCarLoan ? [{ type: 'car', balance: n(form.carLoanBalance), rate: n(form.carLoanRate) / 100, payment: n(form.carLoanPayment) }] : []),
+          ...(form.hasStudentLoan ? [{ type: 'student', balance: n(form.studentLoanBalance), rate: n(form.studentLoanRate) / 100, payment: 0 }] : []),
+          ...(form.hasPersonalLoan ? [{ type: 'personal', balance: n(form.personalLoanBalance), rate: n(form.personalLoanRate) / 100, payment: 0 }] : []),
+          ...(form.hasCreditCard ? [{ type: 'creditCard', balance: n(form.creditCardBalance), rate: n(form.creditCardRate) / 100, payment: 0 }] : []),
+          ...(form.hasBusinessLoan ? [{ type: 'business', balance: n(form.businessLoanBalance), rate: n(form.businessLoanRate) / 100, payment: 0 }] : []),
+        ],
         employer401kAllowsAfterTax: form.employer401kAllowsAfterTax,
-        debts: [],
+        // Phase 2 fields — not captured in Phase 1, set to false/undefined
+        consideringRealEstate: false,
+        plannedPropertyValue:  undefined,
+        repsQualified:         undefined,
       };
+
       await saveSnapshot(snapshot);
-      router.push('/dashboard/asset-preferences');
+      router.push('/dashboard/audit/snapshot-summary' + (freshParam ? '?fresh=true' : ''));
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed. Please try again.');
       setSaving(false);
     }
   };
 
-  // ── Render guards ─────────────────────────────────────────────────────────
-  if (sessionLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  // ── Guards ───────────────────────────────────────────────────────────────
+  if (sessionLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
   if (!session) return <AuthGate onSession={setSession} />;
 
-  // ── Step content ──────────────────────────────────────────────────────────
-  const isLastStep = step === STEPS.length;
+  const isLast = section === SECTIONS.length;
+  const totalMonthly = n(form.essentialMonthlySpend) + n(form.discretionaryMonthlySpend);
+  const computedHomeEquity = Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance));
+  const bonusCash = Math.max(0, n(form.bonusIncome) - (form.bonusDefers ? n(form.bonusDeferred) : 0));
 
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── Top nav ──────────────────────────────────────────────────────── */}
+      {/* Header */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <span className="font-semibold text-gray-900 text-sm">MoneyXprt</span>
-            <span className="text-gray-300 text-sm">/</span>
-            <span className="text-sm text-gray-500">Tax Audit</span>
+          <div>
+            <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">Phase 1 of 2</p>
+            <p className="text-sm font-semibold text-gray-900 leading-tight">Where You Are Today</p>
           </div>
-          <span className="text-xs text-gray-400">{session.user.email}</span>
-        </div>
-      </header>
-
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-
-        {/* ── Progress indicator ───────────────────────────────────────── */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-indigo-600">
-              Step {step} of {STEPS.length} — {STEPS[step - 1].label}
-            </span>
-            <span className="text-xs text-gray-400">{Math.round((step / STEPS.length) * 100)}% complete</span>
-          </div>
-          <div className="flex gap-1">
-            {STEPS.map((s, i) => (
-              <div
-                key={s.label}
-                className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                  i < step ? 'bg-indigo-600' : 'bg-gray-200'
-                }`}
-              />
+          <div className="flex gap-1.5 items-center">
+            {SECTIONS.map((_, i) => (
+              <div key={i} className="rounded-full transition-all duration-300" style={{
+                height: 6,
+                width: i < section - 1 ? 18 : i === section - 1 ? 18 : 7,
+                background: i < section - 1 ? '#059669' : i === section - 1 ? '#1B3A2D' : '#E5E7EB',
+              }} />
             ))}
           </div>
         </div>
+      </header>
 
-        {/* ── Form card ────────────────────────────────────────────────── */}
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
+
+        {/* Progress label */}
+        <div className="mb-4 flex items-center justify-between">
+          <span className="text-xs font-semibold text-emerald-600">
+            Section {section} of {SECTIONS.length} — {SECTIONS[section - 1].label}
+          </span>
+          <span className="text-xs text-gray-400">{Math.round((section / SECTIONS.length) * 100)}%</span>
+        </div>
+
+        {/* Form card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 pt-6 pb-5 border-b border-gray-50">
-            <h1 className="text-lg font-semibold text-gray-900">{STEPS[step - 1].label}</h1>
+          <div className="px-6 pt-6 pb-4 border-b border-gray-50">
+            <h1 className="text-base font-bold text-gray-900">{SECTIONS[section - 1].label}</h1>
             <p className="mt-0.5 text-xs text-gray-400">
-              {step === 1 && 'Tell us about your income sources this year.'}
-              {step === 2 && 'Help us understand your household and business situation.'}
-              {step === 3 && 'Your current financial position helps us size the opportunity.'}
-              {step === 4 && 'A few final questions about real estate and your retirement plan.'}
+              {section === 1 && 'Every income source, this year.'}
+              {section === 2 && 'Your tax situation and business structure.'}
+              {section === 3 && 'What you own today.'}
+              {section === 4 && 'What you owe. Skip anything that doesn\'t apply.'}
+              {section === 5 && 'How money moves every month.'}
+              {section === 6 && 'Household details for strategy calculations.'}
             </p>
           </div>
 
           <div className="px-6 py-6 space-y-5">
 
-            {/* ── Step 1: Income ─────────────────────────────────────── */}
-            {step === 1 && (
-              <>
-                <DollarInput label="W-2 base salary"
-                  hint="Your gross annual salary before taxes or deductions."
-                  value={form.w2Income} onChange={v => set('w2Income', v)} />
+            {/* ── Section 1: Income ─────────────────────────────────── */}
+            {section === 1 && (<>
+              <DollarInput label="W-2 base salary" hint="Gross annual salary before taxes."
+                value={form.w2Income} onChange={v => set('w2Income', v)} />
 
-                {/* Bonus section with deferred comp split */}
-                <DollarInput label="Gross bonus / profit share"
-                  hint="Total expected bonus, commission, or profit-sharing before any deferral."
-                  value={form.bonusIncome}
-                  onChange={v => {
-                    set('bonusIncome', v);
-                    // Clamp deferred if it now exceeds new gross
-                    if (n(form.bonusDeferred) > n(v)) set('bonusDeferred', v);
-                  }} />
+              <DollarInput label="Gross bonus / profit share"
+                hint="Total expected bonus before any deferral."
+                value={form.bonusIncome}
+                onChange={v => { set('bonusIncome', v); if (n(form.bonusDeferred) > n(v)) set('bonusDeferred', v); }} />
 
-                {n(form.bonusIncome) > 0 && (
-                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
-                    <Toggle
-                      label="Do you defer any of this?"
-                      hint="Elective or mandatory deferred compensation you won't receive as cash this year."
-                      value={form.bonusDefers}
-                      onChange={v => { set('bonusDefers', v); if (!v) set('bonusDeferred', ''); }}
-                    />
-                    {form.bonusDefers && (
-                      <>
-                        <DollarInput
-                          label="Amount deferred (not taxable this year)"
-                          hint="Deferred comp, mandatory or elective, that you won't receive as cash this year."
-                          value={form.bonusDeferred}
-                          onChange={v => {
-                            const capped = Math.min(n(v), n(form.bonusIncome));
-                            set('bonusDeferred', capped === n(v) ? v : String(capped));
-                          }}
-                        />
-                        <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-100 px-4 py-2.5">
-                          <span className="text-xs text-gray-500">Taken as cash this year</span>
-                          <span className="text-sm font-semibold text-gray-900 tabular-nums">
-                            ${Math.max(0, n(form.bonusIncome) - n(form.bonusDeferred)).toLocaleString()}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+              {n(form.bonusIncome) > 0 && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Toggle label="Do you defer any of this?"
+                    hint="Deferred comp you won't receive as cash this year."
+                    value={form.bonusDefers}
+                    onChange={v => { set('bonusDefers', v); if (!v) set('bonusDeferred', ''); }} />
+                  {form.bonusDefers && (<>
+                    <DollarInput label="Amount deferred (not taxable this year)"
+                      value={form.bonusDeferred}
+                      onChange={v => { const c = Math.min(n(v), n(form.bonusIncome)); set('bonusDeferred', c === n(v) ? v : String(c)); }} />
+                    <StatRow label="Taken as cash this year" value={`$${bonusCash.toLocaleString()}`} />
+                  </>)}
+                </div>
+              )}
 
-                <DollarInput label="1099 / side income"
-                  hint="Freelance, consulting, or any self-employment income."
-                  value={form.income1099} onChange={v => set('income1099', v)} />
-                <Toggle label="Does your spouse work?"
-                  hint="Includes full-time, part-time, or self-employment income."
-                  value={form.spouseWorks} onChange={v => {
-                    set('spouseWorks', v);
-                    if (!v) { set('spouseIncomeType', ''); set('spouseW2Income', ''); set('spouseBusinessRevenue', ''); set('spouseBusinessNetProfit', ''); set('spouseHoursPerWeekInBusiness', ''); }
-                  }} />
+              <DollarInput label="1099 / freelance / consulting income"
+                hint="Any self-employment income not from a business entity."
+                value={form.income1099} onChange={v => set('income1099', v)} />
 
-                {form.spouseWorks && (
-                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
-                    <p className="text-xs font-semibold text-gray-600">Spouse Income</p>
+              <DollarInput label="Car allowance or employer-paid benefits (annual)"
+                hint="Taxable car allowance, cell phone reimbursements, etc."
+                value={form.carAllowanceAnnual} onChange={v => set('carAllowanceAnnual', v)} />
 
-                    {/* Income type radio */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-2">Spouse income type</label>
-                      <div className="flex flex-col gap-2">
-                        {([
-                          { value: 'w2',              label: 'W-2 Employment' },
-                          { value: 'self_employment',  label: 'Self-Employment or Business' },
-                          { value: 'both',             label: 'Both' },
-                        ] as const).map(opt => (
-                          <button key={opt.value} type="button"
-                            onClick={() => set('spouseIncomeType', opt.value)}
-                            className={`flex items-center gap-2.5 text-left px-3.5 py-2.5 rounded-xl border text-xs transition ${
-                              form.spouseIncomeType === opt.value
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium'
-                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                            }`}>
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              form.spouseIncomeType === opt.value ? 'border-indigo-500' : 'border-gray-300'
-                            }`}>
-                              {form.spouseIncomeType === opt.value && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
-                            </div>
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+              <DollarInput label="Other regular income (annual)"
+                hint="Rental income, dividends, royalties — anything else recurring."
+                value={form.otherIncomeAnnual} onChange={v => set('otherIncomeAnnual', v)} />
 
-                    {/* W2 income */}
-                    {(form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both') && (
-                      <DollarInput label="Spouse W-2 income"
-                        hint="Gross annual salary before taxes."
-                        value={form.spouseW2Income} onChange={v => set('spouseW2Income', v)} />
-                    )}
+              <DollarInput label="Current monthly rental income"
+                hint="From any rental properties you currently own. Leave blank if none."
+                value={form.monthlyRentalIncome} onChange={v => set('monthlyRentalIncome', v)} />
 
-                    {/* Self-employment details */}
-                    {(form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both') && (
-                      <>
-                        <DollarInput label="Spouse business gross revenue"
-                          hint="Total revenue before expenses."
-                          value={form.spouseBusinessRevenue} onChange={v => set('spouseBusinessRevenue', v)} />
-                        <DollarInput label="Spouse business net profit"
-                          hint="After expenses — this is what gets taxed."
-                          value={form.spouseBusinessNetProfit} onChange={v => set('spouseBusinessNetProfit', v)} />
-                      </>
-                    )}
+              <DollarInput label="Current monthly dividend / investment income"
+                hint="Regular distributions from stocks, funds, REITs. Exclude one-time gains."
+                value={form.monthlyDividendIncome} onChange={v => set('monthlyDividendIncome', v)} />
 
-                    {/* Hours per week — always shown when spouse works */}
-                    <DollarInput label="Spouse hours per week in business / work"
-                      hint="Important for REPS eligibility calculation — total non-real-estate working hours."
-                      value={form.spouseHoursPerWeekInBusiness} onChange={v => set('spouseHoursPerWeekInBusiness', v)}
-                      placeholder="40" />
+              <Toggle label="Does your spouse or partner have income?"
+                hint="Includes employment, self-employment, or business income."
+                value={form.spouseWorks}
+                onChange={v => { set('spouseWorks', v); if (!v) { set('spouseIncomeType', ''); set('spouseW2Income', ''); set('spouseBusinessRevenue', ''); set('spouseBusinessNetProfit', ''); } }} />
 
-                    {/* Spouse state */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Spouse state (if different)</label>
-                      <select value={form.spouseState} onChange={e => set('spouseState', e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
-                        {US_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                      </select>
+              {form.spouseWorks && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Divider label="Spouse income" />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">Income type</label>
+                    <div className="flex flex-col gap-2">
+                      {([
+                        { value: 'w2', label: 'W-2 Employment' },
+                        { value: 'self_employment', label: 'Self-Employment / Business' },
+                        { value: 'both', label: 'Both' },
+                      ] as const).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => set('spouseIncomeType', opt.value)}
+                          className={`flex items-center gap-2.5 text-left px-3.5 py-2.5 rounded-xl border text-xs transition ${
+                            form.spouseIncomeType === opt.value
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-medium'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            form.spouseIncomeType === opt.value ? 'border-emerald-500' : 'border-gray-300'}`}>
+                            {form.spouseIncomeType === opt.value && <div className="w-2 h-2 rounded-full bg-emerald-500" />}
+                          </div>
+                          {opt.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
-              </>
-            )}
-
-            {/* ── Step 2: Household ──────────────────────────────────── */}
-            {step === 2 && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Filing status</label>
-                  <select value={form.filingStatus} onChange={e => set('filingStatus', e.target.value as 'single' | 'mfj')}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
-                    <option value="mfj">Married filing jointly</option>
-                    <option value="single">Single</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">State of residence</label>
-                  <select value={form.state} onChange={e => set('state', e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
-                    {US_STATES.map(s => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <DollarInput label="Number of dependents under 18"
-                  hint="Children or other dependents you claim."
-                  value={form.dependentsUnder18} onChange={v => set('dependentsUnder18', v)}
-                  placeholder="0" />
-                <Toggle label="Do you or your spouse own a business or LLC?"
-                  hint="Includes sole proprietorships, single-member LLCs, S-Corps, or partnerships."
-                  value={form.hasBusinessEntity} onChange={v => set('hasBusinessEntity', v)} />
-                {form.hasBusinessEntity && (
-                  <div className="pl-4 border-l-2 border-indigo-100 space-y-4">
-                    <p className="text-xs font-semibold text-gray-600 pt-1">Your Business</p>
-                    <DollarInput label="Business gross revenue"
+                  {(form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both') && (
+                    <DollarInput label="Spouse W-2 income (annual)"
+                      value={form.spouseW2Income} onChange={v => set('spouseW2Income', v)} />
+                  )}
+                  {(form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both') && (<>
+                    <DollarInput label="Spouse business gross revenue"
                       hint="Total revenue before expenses."
-                      value={form.businessRevenue} onChange={v => set('businessRevenue', v)} />
-                    <DollarInput label="Business net profit"
-                      hint="After expenses — this is what gets taxed."
-                      value={form.primaryBusinessNetProfit} onChange={v => set('primaryBusinessNetProfit', v)} />
+                      value={form.spouseBusinessRevenue} onChange={v => set('spouseBusinessRevenue', v)} />
+                    <DollarInput label="Spouse business net profit"
+                      hint="After all business expenses — this is what gets taxed."
+                      value={form.spouseBusinessNetProfit} onChange={v => set('spouseBusinessNetProfit', v)} />
+                  </>)}
+                </div>
+              )}
+            </>)}
+
+            {/* ── Section 2: Tax Situation ──────────────────────────── */}
+            {section === 2 && (<>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Filing status</label>
+                <select value={form.filingStatus} onChange={e => set('filingStatus', e.target.value as FormState['filingStatus'])}
+                  className={`${BASE_INPUT} bg-white`}>
+                  <option value="mfj">Married filing jointly (MFJ)</option>
+                  <option value="single">Single</option>
+                  <option value="hoh">Head of Household (HOH)</option>
+                </select>
+              </div>
+
+              <SelectInput label="State of residence" value={form.state} onChange={v => set('state', v)}>
+                {US_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </SelectInput>
+
+              <DollarInput label="Estimated federal + state tax paid last year"
+                hint="W-2 box 2 + state withholding + any estimated payments."
+                value={form.currentTaxPaid} onChange={v => set('currentTaxPaid', v)} />
+
+              <Toggle label="Do you own a business or LLC?"
+                hint="Includes sole props, SMLLCs, S-Corps, and partnerships."
+                value={form.hasBusinessEntity}
+                onChange={v => set('hasBusinessEntity', v)} />
+
+              {form.hasBusinessEntity && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Divider label="Your Business" />
+                  <DollarInput label="Business gross revenue" value={form.businessRevenue} onChange={v => set('businessRevenue', v)} />
+                  <DollarInput label="Business net profit" hint="After all expenses — this is what gets taxed."
+                    value={form.primaryBusinessNetProfit} onChange={v => set('primaryBusinessNetProfit', v)} />
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Business type</label>
+                    <select value={form.primaryBusinessType} onChange={e => set('primaryBusinessType', e.target.value)}
+                      className={`${BASE_INPUT} bg-white`}>
+                      <option value="">Select…</option>
+                      <option value="sole_prop">Sole Proprietorship</option>
+                      <option value="smllc">Single-Member LLC</option>
+                      <option value="scorp">S-Corp</option>
+                      <option value="partnership">Partnership</option>
+                    </select>
+                  </div>
+                  <SuffixInput label="Hours per week you spend on this business"
+                    hint="Used to size Solo 401k and S-Corp election strategies."
+                    suffix="hrs/wk" value={form.primaryHoursPerWeekInBusiness}
+                    onChange={v => set('primaryHoursPerWeekInBusiness', v)} placeholder="10" />
+                </div>
+              )}
+
+              {form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both') && (
+                <div className="pl-4 border-l-2 border-purple-100 space-y-4">
+                  <Divider label="Spouse Business Entity" />
+                  <Toggle label="Does your spouse have a separate business entity?"
+                    value={form.spouseHasSeparateBusiness}
+                    onChange={v => { set('spouseHasSeparateBusiness', v); if (!v) set('spouseBusinessType', ''); }} />
+                  {form.spouseHasSeparateBusiness && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Business type</label>
-                      <select value={form.primaryBusinessType} onChange={e => set('primaryBusinessType', e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
-                        <option value="">Select type…</option>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Spouse business type</label>
+                      <select value={form.spouseBusinessType} onChange={e => set('spouseBusinessType', e.target.value)}
+                        className={`${BASE_INPUT} bg-white`}>
+                        <option value="">Select…</option>
                         <option value="sole_prop">Sole Proprietorship</option>
                         <option value="smllc">Single-Member LLC</option>
                         <option value="scorp">S-Corp</option>
                         <option value="partnership">Partnership</option>
                       </select>
                     </div>
-                    <DollarInput label="Hours per week you spend on this business"
-                      hint="Used to size your Solo 401k and S-Corp election strategies."
-                      value={form.primaryHoursPerWeekInBusiness} onChange={v => set('primaryHoursPerWeekInBusiness', v)}
-                      placeholder="10" />
+                  )}
+                </div>
+              )}
 
-                    {form.spouseWorks && (
-                      <>
-                        <div className="pt-2 border-t border-gray-100">
-                          <p className="text-xs font-semibold text-gray-600 mb-3">Spouse Business</p>
-                          <Toggle label="Does your spouse have a separate business?"
-                            value={form.spouseHasSeparateBusiness}
-                            onChange={v => { set('spouseHasSeparateBusiness', v); if (!v) set('spouseBusinessType', ''); }} />
-                        </div>
-                        {form.spouseHasSeparateBusiness && (
-                          <div className="space-y-4">
-                            <DollarInput label="Spouse business gross revenue"
-                              value={form.spouseBusinessRevenue} onChange={v => set('spouseBusinessRevenue', v)} />
-                            <DollarInput label="Spouse business net profit"
-                              hint="After expenses."
-                              value={form.spouseBusinessNetProfit} onChange={v => set('spouseBusinessNetProfit', v)} />
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Spouse business type</label>
-                              <select value={form.spouseBusinessType} onChange={e => set('spouseBusinessType', e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
-                                <option value="">Select type…</option>
-                                <option value="sole_prop">Sole Proprietorship</option>
-                                <option value="smllc">Single-Member LLC</option>
-                                <option value="scorp">S-Corp</option>
-                                <option value="partnership">Partnership</option>
-                              </select>
-                            </div>
-                            <DollarInput label="Hours per week spouse spends on this business"
-                              hint="Used to calculate REPS eligibility."
-                              value={form.spouseHoursPerWeekInBusiness} onChange={v => set('spouseHoursPerWeekInBusiness', v)}
-                              placeholder="20" />
-                          </div>
-                        )}
-                      </>
-                    )}
+              <Toggle label="HSA available through your employer?"
+                hint="Requires a High-Deductible Health Plan (HDHP)."
+                value={form.hasHsaAvailable} onChange={v => set('hasHsaAvailable', v)} />
+
+              <ThreeWayToggle label="Does your employer 401(k) allow after-tax contributions?"
+                hint='Enables the "mega backdoor Roth" strategy. Check with your plan admin.'
+                value={form.employer401kAllowsAfterTax}
+                onChange={v => set('employer401kAllowsAfterTax', v)} />
+
+              <Toggle label="Do you have a CPA or tax professional?"
+                value={form.hasCpa ?? false}
+                onChange={v => { set('hasCpa', v); if (!v) set('cpaProactive', undefined); }} />
+
+              {form.hasCpa && (
+                <div className="pl-4 border-l-2 border-emerald-100">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">What does your CPA do?</label>
+                    <div className="inline-flex rounded-xl overflow-hidden border border-gray-200">
+                      {[
+                        { label: 'Proactively suggests strategies', value: true },
+                        { label: 'Mainly just files my return', value: false },
+                      ].map(opt => (
+                        <button key={String(opt.value)} type="button" onClick={() => set('cpaProactive', opt.value)}
+                          className={`px-3 py-2 text-xs font-medium transition ${
+                            form.cpaProactive === opt.value ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                )}
-              </>
-            )}
+                </div>
+              )}
+            </>)}
 
-            {/* ── Step 3: Financial Position ─────────────────────────── */}
-            {step === 3 && (
-              <>
-                <DollarInput label="Estimated total tax paid last year"
-                  hint="Federal + state income tax withheld or paid (W-2 box 2 + any estimated payments)."
-                  value={form.currentTaxPaid} onChange={v => set('currentTaxPaid', v)} />
-                <DollarInput label="Monthly spending"
-                  hint="Average total monthly expenses (housing, food, transportation, etc.)."
-                  value={form.monthlySpend} onChange={v => set('monthlySpend', v)} />
-                <DollarInput label="Emergency fund / liquid savings"
-                  hint="Cash in checking, savings, or money market accounts."
-                  value={form.emergencyFund} onChange={v => set('emergencyFund', v)} />
-                <DollarInput label="Retirement account balance"
-                  hint="Combined total across all 401(k), IRA, and other retirement accounts."
-                  value={form.retirementBalance} onChange={v => set('retirementBalance', v)} />
-                <DollarInput label="Home equity"
-                  hint="Estimated current home value minus outstanding mortgage balance."
-                  value={form.homeEquity} onChange={v => set('homeEquity', v)} />
-                <DollarInput label="Current monthly rental income"
-                  hint="Income from any rental properties you currently own. Enter 0 if none."
-                  value={form.monthlyRentalIncome} onChange={v => set('monthlyRentalIncome', v)} />
-                <DollarInput label="Current monthly dividend / investment income"
-                  hint="Regular income from stocks, funds, or other investments. Exclude one-time gains."
-                  value={form.monthlyDividendIncome} onChange={v => set('monthlyDividendIncome', v)} />
-                <DollarInput label="Existing traditional IRA balance"
-                  hint="Pre-tax IRA balance across all accounts (important for backdoor Roth planning)."
-                  value={form.traditionalIraBalance} onChange={v => set('traditionalIraBalance', v)} />
-                <Toggle label="HSA available through your employer?"
-                  hint="Do you have access to a High-Deductible Health Plan (HDHP) with HSA eligibility?"
-                  value={form.hasHsaAvailable} onChange={v => set('hasHsaAvailable', v)} />
-              </>
-            )}
+            {/* ── Section 3: Balance Sheet ──────────────────────────── */}
+            {section === 3 && (<>
+              <Divider label="Real Estate" />
+              <DollarInput label="Primary residence estimated value"
+                value={form.primaryResidenceValue} onChange={v => set('primaryResidenceValue', v)} />
+              <DollarInput label="Outstanding mortgage balance"
+                value={form.mortgageBalance} onChange={v => set('mortgageBalance', v)} />
+              {(n(form.primaryResidenceValue) > 0 || n(form.mortgageBalance) > 0) && (
+                <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                  <StatRow label="Estimated home equity" value={`$${computedHomeEquity.toLocaleString()}`} />
+                </div>
+              )}
 
-            {/* ── Step 4: Real Estate & Goals ────────────────────────── */}
-            {step === 4 && (
-              <>
-                <Toggle label="Considering buying a rental property?"
-                  value={form.consideringRealEstate}
-                  onChange={v => { set('consideringRealEstate', v); if (!v) { set('plannedPropertyValue', ''); set('repsQualified', undefined); } }} />
-                {form.consideringRealEstate && (
-                  <div className="pl-4 border-l-2 border-indigo-100 space-y-5">
-                    <DollarInput label="Planned property purchase price"
-                      hint="Your target acquisition price."
-                      value={form.plannedPropertyValue}
-                      onChange={v => set('plannedPropertyValue', v)} />
-                    <Toggle
-                      label="Would your non-working spouse manage the property?"
-                      hint="Answering yes means they could qualify as a Real Estate Professional (REPS), unlocking depreciation against your W-2 income."
-                      value={form.repsQualified ?? false}
-                      onChange={v => set('repsQualified', v)} />
+              <Toggle label="Do you currently own a rental property?"
+                hint="Yes means you own one today, not that you're considering it."
+                value={form.currentlyOwnsRental}
+                onChange={v => { set('currentlyOwnsRental', v); if (!v) { set('rentalPropertyValue', ''); set('rentalMortgageBalance', ''); } }} />
+
+              {form.currentlyOwnsRental && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <DollarInput label="Rental property estimated value"
+                    value={form.rentalPropertyValue} onChange={v => set('rentalPropertyValue', v)} />
+                  <DollarInput label="Rental mortgage balance (if any)"
+                    value={form.rentalMortgageBalance} onChange={v => set('rentalMortgageBalance', v)} />
+                </div>
+              )}
+
+              <Divider label="Investment Accounts" />
+              <DollarInput label="Retirement account balance (401k + IRAs combined)"
+                hint="Total across all retirement accounts."
+                value={form.retirementBalance} onChange={v => set('retirementBalance', v)} />
+              <DollarInput label="Traditional IRA balance specifically"
+                hint="Pre-tax IRA balance across all accounts — important for backdoor Roth math."
+                value={form.traditionalIraBalance} onChange={v => set('traditionalIraBalance', v)} />
+              <DollarInput label="Taxable brokerage account balance"
+                hint="Non-retirement investment accounts."
+                value={form.taxableBrokerageBalance} onChange={v => set('taxableBrokerageBalance', v)} />
+
+              {form.hasBusinessEntity && (
+                <DollarInput label="Business equity (estimated value)"
+                  hint="Rough estimate of what your business is worth if sold today."
+                  value={form.businessEquityValue} onChange={v => set('businessEquityValue', v)} />
+              )}
+            </>)}
+
+            {/* ── Section 4: Liabilities ────────────────────────────── */}
+            {section === 4 && (<>
+              <div>
+                <p className="text-xs font-medium text-gray-700 mb-2">Which of these do you currently have?</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: 'hasCarLoan', label: 'Car loan' },
+                    { key: 'hasStudentLoan', label: 'Student loans' },
+                    { key: 'hasPersonalLoan', label: 'Personal loan' },
+                    { key: 'hasCreditCard', label: 'Credit card debt' },
+                    { key: 'hasBusinessLoan', label: 'Business loan' },
+                  ] as { key: keyof FormState; label: string }[]).map(({ key, label }) => {
+                    const checked = form[key] as boolean;
+                    return (
+                      <button key={key} type="button" onClick={() => set(key, !checked as FormState[typeof key])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                          checked ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {!form.hasCarLoan && !form.hasStudentLoan && !form.hasPersonalLoan && !form.hasCreditCard && !form.hasBusinessLoan && (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3">
+                  <p className="text-xs text-emerald-700 font-medium">No debt selected — tap any that apply above, or continue to the next section.</p>
+                </div>
+              )}
+
+              {form.hasCarLoan && (
+                <div className="pl-4 border-l-2 border-blue-100 space-y-3">
+                  <Divider label="Car Loan" />
+                  <DollarInput label="Balance" value={form.carLoanBalance} onChange={v => set('carLoanBalance', v)} />
+                  <SuffixInput label="Interest rate" suffix="% APR" value={form.carLoanRate} onChange={v => set('carLoanRate', v)} placeholder="6.5" />
+                  <DollarInput label="Monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
+                </div>
+              )}
+              {form.hasStudentLoan && (
+                <div className="pl-4 border-l-2 border-purple-100 space-y-3">
+                  <Divider label="Student Loans" />
+                  <DollarInput label="Total balance" value={form.studentLoanBalance} onChange={v => set('studentLoanBalance', v)} />
+                  <SuffixInput label="Average interest rate" suffix="% APR" value={form.studentLoanRate} onChange={v => set('studentLoanRate', v)} placeholder="6.0" />
+                </div>
+              )}
+              {form.hasPersonalLoan && (
+                <div className="pl-4 border-l-2 border-orange-100 space-y-3">
+                  <Divider label="Personal Loan" />
+                  <DollarInput label="Balance" value={form.personalLoanBalance} onChange={v => set('personalLoanBalance', v)} />
+                  <SuffixInput label="Interest rate" suffix="% APR" value={form.personalLoanRate} onChange={v => set('personalLoanRate', v)} placeholder="9.0" />
+                </div>
+              )}
+              {form.hasCreditCard && (
+                <div className="pl-4 border-l-2 border-red-100 space-y-3">
+                  <Divider label="Credit Card Debt" />
+                  <DollarInput label="Total balance across all cards" value={form.creditCardBalance} onChange={v => set('creditCardBalance', v)} />
+                  <SuffixInput label="Average interest rate" suffix="% APR" value={form.creditCardRate} onChange={v => set('creditCardRate', v)} placeholder="22" />
+                </div>
+              )}
+              {form.hasBusinessLoan && (
+                <div className="pl-4 border-l-2 border-gray-100 space-y-3">
+                  <Divider label="Business Loan" />
+                  <DollarInput label="Balance" value={form.businessLoanBalance} onChange={v => set('businessLoanBalance', v)} />
+                  <SuffixInput label="Interest rate" suffix="% APR" value={form.businessLoanRate} onChange={v => set('businessLoanRate', v)} placeholder="7.0" />
+                </div>
+              )}
+            </>)}
+
+            {/* ── Section 5: Cash Flow ──────────────────────────────── */}
+            {section === 5 && (<>
+              <DollarInput label="Monthly essential expenses"
+                hint="Housing, food, transportation, utilities, insurance — non-negotiable spend."
+                value={form.essentialMonthlySpend} onChange={v => set('essentialMonthlySpend', v)} />
+
+              <DollarInput label="Monthly discretionary spending"
+                hint="Dining out, entertainment, subscriptions, shopping, travel."
+                value={form.discretionaryMonthlySpend} onChange={v => set('discretionaryMonthlySpend', v)} />
+
+              {(n(form.essentialMonthlySpend) > 0 || n(form.discretionaryMonthlySpend) > 0) && (
+                <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 space-y-0">
+                  <StatRow label="Essential" value={`$${n(form.essentialMonthlySpend).toLocaleString()}`} />
+                  <StatRow label="Discretionary" value={`$${n(form.discretionaryMonthlySpend).toLocaleString()}`} />
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <span className="text-xs font-bold text-gray-700">Total monthly spend</span>
+                    <span className="text-sm font-bold text-gray-900 tabular-nums">${totalMonthly.toLocaleString()}</span>
                   </div>
-                )}
-                <ThreeWayToggle
-                  label="Does your employer 401(k) allow after-tax contributions?"
-                  hint={'Enables the "mega backdoor Roth" strategy. Check with your plan administrator if unsure.'}
-                  value={form.employer401kAllowsAfterTax}
-                  onChange={v => set('employer401kAllowsAfterTax', v)} />
+                </div>
+              )}
 
-                {saveError && (
-                  <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
-                    <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-xs text-red-700">{saveError}</p>
-                  </div>
-                )}
-              </>
-            )}
+              <DollarInput label="Emergency fund / liquid savings"
+                hint="Cash in checking, savings, or money market accounts."
+                value={form.emergencyFund} onChange={v => set('emergencyFund', v)} />
+            </>)}
+
+            {/* ── Section 6: Household ──────────────────────────────── */}
+            {section === 6 && (<>
+              <SuffixInput label="Number of dependents under 18" suffix="kids"
+                value={form.dependentsUnder18} onChange={v => set('dependentsUnder18', v)} placeholder="0" />
+
+              <TextInput label="Ages of dependents"
+                hint="Comma-separated — e.g. 12, 15. Helps with the hire-your-kids strategy."
+                placeholder="12, 15" value={form.dependentAges} onChange={v => set('dependentAges', v)} />
+
+              {form.spouseWorks && (
+                <SuffixInput label="Total hours your spouse works per week"
+                  hint="Employment + business combined. Used for REPS eligibility calculation."
+                  suffix="hrs/wk" value={form.spouseHoursPerWeekInBusiness}
+                  onChange={v => set('spouseHoursPerWeekInBusiness', v)} placeholder="40" />
+              )}
+
+              {saveError && (
+                <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                  <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-red-700">{saveError}</p>
+                </div>
+              )}
+            </>)}
+
           </div>
 
-          {/* ── Navigation ───────────────────────────────────────────── */}
+          {/* Navigation */}
           <div className="px-6 py-4 bg-gray-50/60 border-t border-gray-100 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStep(s => s - 1)}
-              disabled={step === 1}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
-            >
+            <button type="button" disabled={section === 1} onClick={() => setSection(s => s - 1)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
               Back
             </button>
 
-            <div className="flex gap-1.5">
-              {STEPS.map((_, i) => (
-                <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i + 1 === step ? 'bg-indigo-600 w-4' : i + 1 < step ? 'bg-indigo-300' : 'bg-gray-200'}`} />
+            <div className="flex gap-1">
+              {SECTIONS.map((_, i) => (
+                <div key={i} className={`h-1.5 rounded-full transition-all ${i + 1 === section ? 'w-4 bg-[#1B3A2D]' : i + 1 < section ? 'w-1.5 bg-emerald-400' : 'w-1.5 bg-gray-200'}`} />
               ))}
             </div>
 
-            {isLastStep ? (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition"
-              >
-                {saving ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    Run my audit
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </>
-                )}
+            {isLast ? (
+              <button type="button" onClick={handleSubmit} disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#1B3A2D] text-white text-xs font-semibold hover:bg-[#24503d] disabled:opacity-60 transition">
+                {saving ? (<><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Saving…</>) : <>Complete Phase 1 →</>}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => setStep(s => s + 1)}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
-              >
+              <button type="button" onClick={() => setSection(s => s + 1)}
+                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition">
                 Next
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

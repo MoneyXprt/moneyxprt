@@ -72,10 +72,25 @@ export interface GeneratedPlan {
     annualValue: number;
     strategies: StrategyResult[];
     addedToDeployableCapital: number;
+    rentalTaxUnlockAnnualValue?: number;  // extra annual value unlocked when first rental is acquired
   };
   assetRoadmap: AssetRoadmapRow[];
   deployableCapitalPerYear: number;
   aiNarrative: null;
+}
+
+// ─── Income assumptions (optional overrides) ─────────────────────────────────
+
+export interface IncomeAssumptions {
+  businessMonthly12: number;
+  businessMonthly36: number;
+  spouseBusinessMonthly12: number;
+  spouseBusinessMonthly36: number;
+  digitalProductsMonthly12: number;
+  digitalProductsMonthly36: number;
+  digitalProductsPeak: number;
+  firstRentalDelayYears?: number;
+  bonusGrowthRate?: number;   // fractional, e.g. 0.05 = 5%
 }
 
 // ─── Asset configuration ──────────────────────────────────────────────────────
@@ -170,7 +185,7 @@ function fmt(n: number): string {
 
 // ─── Core generator ───────────────────────────────────────────────────────────
 
-export function generatePlan(inputs: PlanInputs): GeneratedPlan {
+export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssumptions): GeneratedPlan {
   const { freedomNumber, snapshot, assetPreferences, constraints } = inputs;
   const { hardConstraints } = constraints;
   const currentYear = new Date().getFullYear();
@@ -181,14 +196,55 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
 
   // ── Step 2: Deployable capital ────────────────────────────────────────────
   const strategyResults = evaluateAll(snapshot);
+  const excludedIds = snapshot.excludedStrategyIds ?? [];
   const taxSavingsActive = strategyResults
-    .filter(r => r.state === 'ACTIVE')
+    .filter(r => r.state === 'ACTIVE' && !excludedIds.includes(r.id))
     .reduce((s, r) => s + r.estimatedAnnualValue, 0);
   const taxSavingsVerify = strategyResults
     .filter(r => r.state === 'VERIFY')
     .reduce((s, r) => s + r.estimatedAnnualValue * 0.5, 0);
   const addedToDeployableCapital = taxSavingsActive + taxSavingsVerify;
   const deployableCapitalPerYear = constraints.capitalPerYear + addedToDeployableCapital;
+
+  // ── Step 2b: Post-rental tax unlock value ─────────────────────────────────
+  // If the user doesn't currently own a rental but the roadmap will acquire one,
+  // compute how much additional annual value depreciation/REPS would unlock.
+  // This is used to boost deployableCapitalPerYear the year AFTER acquisition.
+  let rentalTaxUnlockAnnualValue = 0;
+  const wantsRental = assetPreferences.some(p => p === 'long_term_rental' || p === 'short_term_rental');
+  const simulationWillRun = !snapshot.currentlyOwnsRental && wantsRental && snapshot.consideringRealEstate;
+  console.log(
+    '[planGenerator] rental tax-unlock simulation:',
+    JSON.stringify({
+      assetPreferences,
+      consideringRealEstate: snapshot.consideringRealEstate,
+      currentlyOwnsRental: snapshot.currentlyOwnsRental,
+      wantsRental,
+      simulationWillRun,
+    }),
+  );
+  if (simulationWillRun) {
+    const rentalPropertyValue = snapshot.plannedPropertyValue ?? 350_000;
+    // REPS is viable when the non-working spouse can dedicate 750+ hours to RE activities.
+    // If the spouse doesn't work, REPS is ACTIVE → simulate with repsQualified: true
+    // so depreciation shows its full non-passive value in the projection.
+    const repsViable = !snapshot.spouseWorks;
+    const postRentalSnapshot: FinancialSnapshot = {
+      ...snapshot,
+      currentlyOwnsRental:  true,
+      rentalPropertyValue,
+      repsQualified: repsViable ? true : (snapshot.repsQualified ?? undefined),
+    };
+    const postRentalResults = evaluateAll(postRentalSnapshot);
+    // Sum value from strategies that are newly valuable (previously NOT_APPLICABLE or $0).
+    rentalTaxUnlockAnnualValue = postRentalResults
+      .filter(r => {
+        const current = strategyResults.find(c => c.id === r.id);
+        return (r.estimatedAnnualValue ?? 0) > 0 &&
+               (current?.estimatedAnnualValue ?? 0) === 0;
+      })
+      .reduce((sum, r) => sum + (r.estimatedAnnualValue ?? 0), 0);
+  }
 
   // ── Step 3: Phases ────────────────────────────────────────────────────────
   const phases: Phase[] = [];
@@ -314,6 +370,12 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
   let yearsToFreedom = 20;
   const freedomTarget = freedomNumber.monthlyTarget;
 
+  // Rental tax unlock tracking: effectiveDeployableCapital increases the year
+  // after the first rental is acquired.
+  let effectiveDeployableCapital = deployableCapitalPerYear;
+  let rentalAcquiredYear = -1;         // year the first rental is acquired (1-based)
+  let postRentalTaxInjected = false;   // ensures we only inject once
+
   /** Digital products / content business growth model. */
   const ZERO_COST_GROWTH_STEP     = 1_000;   // +$1k/mo per growth event
   const ZERO_COST_INCOME_CAP      = 15_000;  // capped at $15k/mo
@@ -344,13 +406,107 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
     yearsToFreedom = 0;
   } else {
     for (let year = 1; year <= 20; year++) {
-      capitalAccumulated += deployableCapitalPerYear;
+      // Capital deployment: base + spouse business contribution + after-tax bonus growth
+      const spouseBoost = incomeAssumptions
+        ? (year >= 3 ? incomeAssumptions.spouseBusinessMonthly36 : incomeAssumptions.spouseBusinessMonthly12) * 12
+        : 0;
+      const bonusRate = incomeAssumptions?.bonusGrowthRate ?? 0;
+      const bonusBoost = bonusRate > 0
+        ? snapshot.bonusTakenAsCash * (Math.pow(1 + bonusRate, year) - 1) * 0.67
+        : 0;
+
+      // ── Rental tax unlock: inject the year AFTER first rental is acquired ──
+      // effectiveDeployableCapital is increased here so it's included in the
+      // capitalAccumulated addition below — no double-counting.
+      let taxUnlockThisYear = false;
+      if (!postRentalTaxInjected && rentalAcquiredYear >= 0 &&
+          year === rentalAcquiredYear + 1 && rentalTaxUnlockAnnualValue > 0) {
+        postRentalTaxInjected = true;
+        taxUnlockThisYear = true;
+        effectiveDeployableCapital += rentalTaxUnlockAnnualValue;
+      }
+
+      capitalAccumulated += effectiveDeployableCapital + spouseBoost + bonusBoost;
       let yearAcquired = false;
+      let capitalAssetAcquiredThisYear = false;  // set in step 3; gates the index sweep in step 4
+
+      // Debug: trace capital state at the start of each year
+      const _nextAssetDbg = capitalAssets.length > 0
+        ? capitalAssets[capitalCycleIndex % capitalAssets.length]
+        : null;
+      console.log(
+        `[roadmap] year=${year}` +
+        ` cycleIdx=${capitalCycleIndex}` +
+        ` capitalAccumulated=${Math.round(capitalAccumulated)}` +
+        ` effectiveDeployable=${Math.round(effectiveDeployableCapital)}` +
+        ` evaluating=${_nextAssetDbg ? _nextAssetDbg.id + '(dp=$' + _nextAssetDbg.downPayment + ')' : 'index-only'}`,
+      );
+
+      // Emit the tax unlock roadmap row (after capital accumulation so ordering is clean)
+      if (taxUnlockThisYear) {
+        roadmap.push({
+          year,
+          calendarYear: currentYear + year,
+          action: `Real estate tax strategies unlocked: +${fmt(rentalTaxUnlockAnnualValue)}/yr`,
+          assetType: 'tax_unlock',
+          capitalDeployed: 0,
+          estimatedMonthlyIncomeAdded: 0,
+          cumulativeMonthlyIncome,
+          remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+        });
+        yearAcquired = true;
+      }
+
+      // ── 0. Business income boosts (year 1 and year 3) ─────────────────────
+      if (incomeAssumptions) {
+        if (year === 1) {
+          const currentBiz = snapshot.businessRevenue / 12;
+          const delta = Math.max(0, incomeAssumptions.businessMonthly12 - currentBiz);
+          if (delta > 0) {
+            cumulativeMonthlyIncome += delta;
+            roadmap.push({
+              year,
+              calendarYear: currentYear + year,
+              action: `Business income grows to ${fmt(incomeAssumptions.businessMonthly12)}/mo`,
+              assetType: 'business_growth',
+              capitalDeployed: 0,
+              estimatedMonthlyIncomeAdded: delta,
+              cumulativeMonthlyIncome,
+              remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+            });
+            yearAcquired = true;
+          }
+        }
+        if (year === 3) {
+          const delta = Math.max(0, incomeAssumptions.businessMonthly36 - incomeAssumptions.businessMonthly12);
+          if (delta > 0) {
+            cumulativeMonthlyIncome += delta;
+            roadmap.push({
+              year,
+              calendarYear: currentYear + year,
+              action: `Business income grows to ${fmt(incomeAssumptions.businessMonthly36)}/mo`,
+              assetType: 'business_growth',
+              capitalDeployed: 0,
+              estimatedMonthlyIncomeAdded: delta,
+              cumulativeMonthlyIncome,
+              remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+            });
+            yearAcquired = true;
+          }
+        }
+        if (cumulativeMonthlyIncome >= freedomTarget) {
+          projectedFreedomYear = currentYear + year;
+          yearsToFreedom = year;
+          break;
+        }
+      }
 
       // ── 1. Launch zero-cost assets (each only once, in year 1 of the plan) ──
       for (const cfg of zeroCostEligible) {
         if (!launchedZeroCost.has(cfg.id)) {
-          const income = cfg.baseMonthlyIncome;
+          const income = (incomeAssumptions && cfg.id === 'digital_products')
+            ? incomeAssumptions.digitalProductsMonthly12
+            : cfg.baseMonthlyIncome;
           cumulativeMonthlyIncome += income;
           launchedZeroCost.set(cfg.id, { launchYear: year, growthCount: 0, currentIncome: income, cfg });
           roadmap.push({
@@ -375,14 +531,17 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
 
       // ── 2. Growth events for launched zero-cost assets ────────────────────
       // Every ZERO_COST_GROWTH_MONTHS (18) months after launch, income grows by
-      // ZERO_COST_GROWTH_STEP up to ZERO_COST_INCOME_CAP.
+      // ZERO_COST_GROWTH_STEP up to the asset's income cap.
       // We work in months (year * 12) to support the non-integer 18-month interval.
       for (const [id, state] of launchedZeroCost) {
+        const assetCap = (id === 'digital_products' && incomeAssumptions)
+          ? incomeAssumptions.digitalProductsPeak
+          : ZERO_COST_INCOME_CAP;
         const monthsSinceLaunch = (year - state.launchYear) * 12;
         const nextGrowthAtMonth = (state.growthCount + 1) * ZERO_COST_GROWTH_MONTHS;
         const isDueForGrowth    = monthsSinceLaunch >= nextGrowthAtMonth;
-        if (isDueForGrowth && state.currentIncome < ZERO_COST_INCOME_CAP) {
-          const growth = Math.min(ZERO_COST_GROWTH_STEP, ZERO_COST_INCOME_CAP - state.currentIncome);
+        if (isDueForGrowth && state.currentIncome < assetCap) {
+          const growth = Math.min(ZERO_COST_GROWTH_STEP, assetCap - state.currentIncome);
           cumulativeMonthlyIncome += growth;
           state.currentIncome     += growth;
           state.growthCount       += 1;
@@ -408,9 +567,20 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
       }
 
       // ── 3. Acquire capital assets while funds allow ───────────────────────
+      const rentalDelayYears = incomeAssumptions?.firstRentalDelayYears ?? 0;
       let acquired = true;
       while (acquired && capitalAssets.length > 0) {
         acquired = false;
+        // Advance past any rentals that are still in their delay window
+        let skipped = 0;
+        while (skipped < capitalAssets.length) {
+          const c = capitalAssets[capitalCycleIndex % capitalAssets.length];
+          const isRental = c.id === 'long_term_rental' || c.id === 'short_term_rental';
+          if (isRental && year <= rentalDelayYears) { capitalCycleIndex++; skipped++; }
+          else break;
+        }
+        if (skipped >= capitalAssets.length) break; // all assets are delayed rentals this year
+
         const cfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
         if (capitalAccumulated >= cfg.downPayment) {
           capitalAccumulated -= cfg.downPayment;
@@ -429,6 +599,12 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
           capitalCycleIndex++;
           yearAcquired = true;
           acquired = true;
+          capitalAssetAcquiredThisYear = true;
+          // Track first rental acquisition so we can inject the tax unlock the following year
+          if (rentalAcquiredYear < 0 &&
+              (cfg.id === 'long_term_rental' || cfg.id === 'short_term_rental')) {
+            rentalAcquiredYear = year;
+          }
           if (cumulativeMonthlyIncome >= freedomTarget) break;
         }
       }
@@ -439,14 +615,21 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
       }
 
       // ── 4. Index fund compounding ────────────────────────────────────────
-      // After other asset acquisitions, sweep remaining accumulated capital
-      // into index funds (if selected). The balance compounds year-over-year:
-      // each year's contribution adds to the running total, and income is
-      // recalculated as (totalBalance * 0.07) / 12.
-      if (wantsIndexInvesting && capitalAccumulated > 0) {
+      // Sweep remaining capital to index in two cases only:
+      //   (a) A capital asset was acquired THIS year — the remainder is genuine excess.
+      //   (b) No capital assets are in the cycle — index is the only destination.
+      // Any other year (still saving up), preserve capitalAccumulated so it
+      // accumulates toward the next capital-asset down payment across years.
+      // This interleaves rentals and index fund naturally: buy rental → sweep excess
+      // to index → save again → buy next rental → sweep excess → repeat.
+      const sweepToIndexThisYear = wantsIndexInvesting && capitalAccumulated > 0 &&
+        (capitalAssets.length === 0 || capitalAssetAcquiredThisYear);
+
+      if (sweepToIndexThisYear) {
+        const sweepAmount = capitalAccumulated;
         const previousIndexIncome = (indexFundBalance * 0.07) / 12;
-        indexFundBalance += capitalAccumulated;
-        capitalAccumulated = 0;
+        indexFundBalance   += sweepAmount;
+        capitalAccumulated  = 0;
         const newIndexIncome = (indexFundBalance * 0.07) / 12;
         const incomeAdded    = newIndexIncome - previousIndexIncome;
         cumulativeMonthlyIncome += incomeAdded;
@@ -455,7 +638,7 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
           calendarYear: currentYear + year,
           action: `Index Fund balance grows to ${fmt(indexFundBalance)} → ${fmt(newIndexIncome)}/mo`,
           assetType: 'index_investing',
-          capitalDeployed: indexFundBalance - (indexFundBalance - capitalAccumulated),
+          capitalDeployed: sweepAmount,
           estimatedMonthlyIncomeAdded: Math.round(incomeAdded),
           cumulativeMonthlyIncome,
           remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
@@ -502,6 +685,7 @@ export function generatePlan(inputs: PlanInputs): GeneratedPlan {
       annualValue: taxSavingsActive,
       strategies: strategyResults.filter(r => r.state === 'ACTIVE'),
       addedToDeployableCapital,
+      rentalTaxUnlockAnnualValue: rentalTaxUnlockAnnualValue > 0 ? rentalTaxUnlockAnnualValue : undefined,
     },
     assetRoadmap: roadmap,
     deployableCapitalPerYear,
@@ -520,19 +704,21 @@ export async function savePlan(plan: GeneratedPlan, userId: string): Promise<voi
       ? `${plan.freedomGap.projectedFreedomYear}-01-01`
       : null;
 
-  const { error } = await sb.from('generated_plans').upsert(
-    {
-      user_id:                     userId,
-      freedom_gap:                 plan.freedomGap,
-      phases:                      plan.phases,
-      tax_strategy_stack:          plan.taxStrategyStack,
-      asset_roadmap:               plan.assetRoadmap,
-      deployable_capital_per_year: plan.deployableCapitalPerYear,
-      ai_narrative:                null,
-      projected_freedom_date:      projectedFreedomDate,
-    },
-    { onConflict: 'user_id' },
-  );
+  // Retire all previous plans for this user
+  await sb.from('generated_plans').update({ is_current: false }).eq('user_id', userId);
+
+  // Insert new current plan
+  const { error } = await sb.from('generated_plans').insert({
+    user_id:                     userId,
+    is_current:                  true,
+    freedom_gap:                 plan.freedomGap,
+    phases:                      plan.phases,
+    tax_strategy_stack:          plan.taxStrategyStack,
+    asset_roadmap:               plan.assetRoadmap,
+    deployable_capital_per_year: plan.deployableCapitalPerYear,
+    ai_narrative:                null,
+    projected_freedom_date:      projectedFreedomDate,
+  });
 
   if (error) throw new Error(`savePlan failed: ${error.message}`);
 }
