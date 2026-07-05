@@ -354,10 +354,9 @@ export default function AssumptionsPage() {
         console.warn('plan_assumptions upsert failed:', assumptionsError.message);
       }
 
-      // Update capital_per_year if lever was changed
-      if (capitalPerYearLever !== constraints.capitalPerYear) {
-        await sb.from('user_constraints').update({ capital_per_year: capitalPerYearLever }).eq('user_id', uid);
-      }
+      // capitalPerYearLever is a local what-if preview only — capital_per_year is derived
+      // read-only from the Audit deployable calculation (set by phase2/page.tsx) and must
+      // not be overwritten here.
 
       // Update freedom_number_monthly if lever was changed
       if (freedomNumberLever !== profile.monthlyTarget) {

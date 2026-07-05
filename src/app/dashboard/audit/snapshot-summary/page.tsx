@@ -6,6 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
+import { computeMonthlyTakeHome, computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,21 +23,6 @@ function fmtFull(n: number): string {
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
-}
-
-// Compute monthly take-home as (gross annual income − taxes) / 12
-function computeMonthlyTakeHome(s: FinancialSnapshot): number {
-  const grossAnnual =
-    s.w2Income +
-    s.bonusTakenAsCash +
-    s.income1099 +
-    s.carAllowanceAnnual +
-    s.otherIncomeAnnual +
-    s.spouseW2Income +
-    s.spouseBusinessNetProfit +
-    (s.monthlyRentalIncome * 12) +
-    (s.monthlyDividendIncome * 12);
-  return Math.max(0, (grossAnnual - s.currentTaxPaid) / 12);
 }
 
 function computeTotalDebt(s: FinancialSnapshot): number {
@@ -187,10 +173,13 @@ export default function SnapshotSummaryPage() {
   const taxColor: 'green' | 'amber' | 'red' = effectiveTaxRate <= 0.2 ? 'green' : effectiveTaxRate <= 0.3 ? 'amber' : 'red';
 
   // Card 3 — Deployable capital
-  const monthlyTakeHome  = computeMonthlyTakeHome(s);
-  const monthlyEssential = s.essentialMonthlySpend;
-  const monthlyDisc      = s.discretionaryMonthlySpend;
-  const deployable       = Math.max(0, monthlyTakeHome - monthlyEssential - monthlyDisc);
+  // See computeMonthlyDeployable's doc comment: only carLoanPayment is a real debt-payment
+  // subtraction today — student/personal/credit-card/business debts have no payment field yet.
+  const monthlyTakeHome        = computeMonthlyTakeHome(s);
+  const monthlyEssential       = s.essentialMonthlySpend;
+  const monthlyDisc            = s.discretionaryMonthlySpend;
+  const monthlyMinDebtPayments = s.carLoanPayment;
+  const deployable             = computeMonthlyDeployable(s);
 
   const nextUrl = '/dashboard/asset-preferences' + (freshParam ? '?fresh=true' : '');
 
@@ -322,6 +311,9 @@ export default function SnapshotSummaryPage() {
                 { label: 'Estimated monthly take-home', value: fmtFull(monthlyTakeHome) },
                 { label: 'Essential monthly spend',     value: `− ${fmtFull(monthlyEssential)}` },
                 { label: 'Discretionary spending',      value: `− ${fmtFull(monthlyDisc)}` },
+                ...(monthlyMinDebtPayments > 0
+                  ? [{ label: 'Minimum debt payments (car loan)', value: `− ${fmtFull(monthlyMinDebtPayments)}` }]
+                  : []),
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">
                   <span className="text-xs text-white/70">{label}</span>

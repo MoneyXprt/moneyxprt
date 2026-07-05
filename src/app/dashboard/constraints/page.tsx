@@ -161,7 +161,6 @@ export default function ConstraintsPage() {
   const [sessionLoading, setSessionLoading] = useState(true);
 
   // Form state
-  const [capitalPerYear, setCapitalPerYear] = useState(12_000);
   const [hoursPerWeek,   setHoursPerWeek]   = useState(5);
   const [riskTolerance,  setRiskTolerance]  = useState<RiskLevel>('moderate');
   const [constraints,    setConstraints]    = useState<Set<ConstraintKey>>(new Set());
@@ -178,11 +177,10 @@ export default function ConstraintsPage() {
       if (s && !isFresh) {
         const { data } = await sb
           .from('user_constraints')
-          .select('capital_per_year, hours_per_week, risk_tolerance, hard_constraints')
+          .select('hours_per_week, risk_tolerance, hard_constraints')
           .eq('user_id', s.user.id)
           .maybeSingle();
         if (data) {
-          setCapitalPerYear(Number(data.capital_per_year));
           setHoursPerWeek(Number(data.hours_per_week));
           setRiskTolerance(data.risk_tolerance as RiskLevel);
           if (Array.isArray(data.hard_constraints)) {
@@ -214,7 +212,6 @@ export default function ConstraintsPage() {
         .from('user_constraints')
         .upsert({
           user_id:          session.user.id,
-          capital_per_year: capitalPerYear,
           hours_per_week:   hoursPerWeek,
           risk_tolerance:   riskTolerance,
           hard_constraints: Array.from(constraints),
@@ -275,36 +272,6 @@ export default function ConstraintsPage() {
             Last step. Tell us what you&apos;re working with and we&apos;ll build around it.
           </p>
         </div>
-
-        {/* ── Section 1: Capital ────────────────────────────────────────── */}
-        <Section
-          title="How much can you deploy toward assets each year?"
-          helper="After expenses, debt payments, and emergency fund — what's left to invest?"
-        >
-          {/* Big value display */}
-          <div className="text-center mb-5">
-            <p className="text-4xl font-extrabold text-emerald-600 tabular-nums leading-none">
-              ${capitalPerYear.toLocaleString()}
-            </p>
-            <p className="text-sm text-gray-400 mt-1">per year</p>
-          </div>
-
-          <input
-            type="range"
-            min={0}
-            max={100_000}
-            step={1_000}
-            value={capitalPerYear}
-            onChange={e => setCapitalPerYear(Number(e.target.value))}
-            className="plan-slider"
-            style={{ background: sliderGradient(capitalPerYear, 0, 100_000) }}
-          />
-          <div className="flex justify-between mt-2">
-            <span className="text-[11px] text-gray-400">$0 — building toward it</span>
-            <span className="text-[11px] text-gray-400">$25K</span>
-            <span className="text-[11px] text-gray-400">$100K+</span>
-          </div>
-        </Section>
 
         {/* ── Section 2: Time ───────────────────────────────────────────── */}
         <Section

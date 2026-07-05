@@ -6,6 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
+import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -378,7 +379,6 @@ export default function Phase2Page() {
   const [acquisitionTimeframe, setAcquisitionTimeframe] = useState('');
 
   // Section 4 — Constraints
-  const [capitalPerYear, setCapitalPerYear] = useState(24_000);
   const [hoursPerWeek,   setHoursPerWeek]   = useState(5);
   const [riskTolerance,  setRiskTolerance]  = useState<RiskLevel>('moderate');
   const [hardConstraints, setHardConstraints] = useState<Set<ConstraintKey>>(new Set());
@@ -414,6 +414,10 @@ export default function Phase2Page() {
     : 0;
   const selectedRentalType = assetSelections.has('long_term_rental') || assetSelections.has('short_term_rental');
 
+  // Deployable capital is no longer user-editable — derived directly from the corrected
+  // Audit deployable calculation (src/app/lib/deployableCapital.ts), annualized.
+  const capitalPerYear = snapshot ? Math.round(computeMonthlyDeployable(snapshot) * 12) : 0;
+
   // ── Data load ─────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async (s: Session) => {
@@ -426,7 +430,7 @@ export default function Phase2Page() {
         await Promise.all([
           getLatestSnapshotWithId(),
           sb.from('asset_preferences').select('asset_type').eq('user_id', uid).eq('selected', true),
-          sb.from('user_constraints').select('capital_per_year,hours_per_week,risk_tolerance,hard_constraints').eq('user_id', uid).maybeSingle(),
+          sb.from('user_constraints').select('hours_per_week,risk_tolerance,hard_constraints').eq('user_id', uid).maybeSingle(),
           sb.from('plan_assumptions').select('*').eq('user_id', uid).maybeSingle(),
         ]);
 
@@ -455,7 +459,6 @@ export default function Phase2Page() {
 
         // Pre-populate Section 4
         if (constraintsRow) {
-          setCapitalPerYear(Number(constraintsRow.capital_per_year) || 24_000);
           setHoursPerWeek(Number(constraintsRow.hours_per_week) || 5);
           setRiskTolerance((constraintsRow.risk_tolerance as RiskLevel) || 'moderate');
           if (Array.isArray(constraintsRow.hard_constraints)) {
@@ -1090,23 +1093,14 @@ export default function Phase2Page() {
           </p>
         </div>
 
-        {/* Capital per year */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        {/* Capital per year — derived from Audit deployable calculation, read-only */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
           <div>
             <p className="text-sm font-semibold text-gray-900">How much can you deploy toward assets each year?</p>
-            <p className="text-xs text-gray-400 mt-0.5">After expenses, debt payments, and emergency fund.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Calculated from your Financial Snapshot: take-home pay minus expenses and debt payments, annualized.</p>
             <p className="text-3xl font-extrabold text-emerald-700 tabular-nums mt-2 leading-none">
               {fmt(capitalPerYear)}<span className="text-base font-medium text-gray-400 ml-2">/ year</span>
             </p>
-          </div>
-          <input
-            type="range" min={0} max={100_000} step={1_000} value={capitalPerYear}
-            onChange={e => setCapitalPerYear(Number(e.target.value))}
-            className="p2-slider"
-            style={{ background: sliderGrad(capitalPerYear, 0, 100_000) }}
-          />
-          <div className="flex justify-between text-[11px] text-gray-400">
-            <span>$0</span><span>$50K</span><span>$100K+</span>
           </div>
         </div>
 

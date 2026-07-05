@@ -544,16 +544,9 @@ export default function TimelinePage() {
     try {
       const updates: PromiseLike<unknown>[] = [];
 
-      if (
-        constraints &&
-        Math.round(levers.monthlyCapital * 12) !== Math.round(savedLevers.monthlyCapital * 12)
-      ) {
-        updates.push(
-          sb.from('user_constraints')
-            .update({ capital_per_year: Math.round(levers.monthlyCapital * 12) })
-            .eq('user_id', userId),
-        );
-      }
+      // levers.monthlyCapital is a local what-if preview only — capital_per_year is derived
+      // read-only from the Audit deployable calculation (set by phase2/page.tsx) and must
+      // not be overwritten here.
 
       if (profile && levers.freedomNumber !== savedLevers.freedomNumber) {
         updates.push(
