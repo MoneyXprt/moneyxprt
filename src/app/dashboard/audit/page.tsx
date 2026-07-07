@@ -406,9 +406,15 @@ export default function AuditPage() {
   // so the user sees the error immediately rather than after clicking through every
   // section — by the time handleSubmit runs, section 1 has already been validated.
   const handleNext = () => {
-    if (section === 1 && (form.bonusFrequency === 'quarterly' || form.bonusFrequency === 'annual') && n(form.bonusPlanAmount) <= 0) {
-      setSaveError('Enter your estimated bonus amount before continuing.');
-      return;
+    if (section === 1 && (form.bonusFrequency === 'quarterly' || form.bonusFrequency === 'annual')) {
+      if (n(form.bonusPlanAmount) <= 0) {
+        setSaveError('Enter your estimated bonus amount before continuing.');
+        return;
+      }
+      if (!form.bonusPaymentMonth) {
+        setSaveError('Select the month your bonus is typically paid.');
+        return;
+      }
     }
     setSaveError(null);
     setSection(s => s + 1);
@@ -620,7 +626,7 @@ export default function AuditPage() {
                         value={form.bonusPlanAmount} onChange={v => { set('bonusPlanAmount', v); setSaveError(null); }} />
                       <SelectInput label="What month is it typically paid?"
                         value={form.bonusPaymentMonth}
-                        onChange={v => set('bonusPaymentMonth', v)}>
+                        onChange={v => { set('bonusPaymentMonth', v); setSaveError(null); }}>
                         <option value="">Select…</option>
                         {MONTH_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                       </SelectInput>
