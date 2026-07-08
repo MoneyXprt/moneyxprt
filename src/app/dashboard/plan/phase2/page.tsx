@@ -7,6 +7,7 @@ import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
+import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ function getHighRateDebts(s: FinancialSnapshot) {
     { label: 'Credit card',    balance: s.creditCardBalance,   rate: s.creditCardRate },
     { label: 'Student loan',   balance: s.studentLoanBalance,  rate: s.studentLoanRate },
     { label: 'Business loan',  balance: s.businessLoanBalance, rate: s.businessLoanRate },
+    { label: s.otherDebtLabel || 'Other debt', balance: s.otherDebtBalance, rate: s.otherDebtRate },
   ].filter(d => d.balance > 0 && d.rate > 0.06);
 }
 
@@ -366,6 +368,8 @@ export default function Phase2Page() {
   const [snapshot, setSnapshot]         = useState<FinancialSnapshot | null>(null);
   const [snapshotId, setSnapshotId]     = useState<string | null>(null);
   const [activeStrategies, setActiveStrategies] = useState<StrategyResult[]>([]);
+  const [bonusPlan, setBonusPlan]         = useState<BonusPlan | null>(null);
+  const [bonusPayments, setBonusPayments] = useState<BonusPayment[]>([]);
 
   // Section 1 — Stability
   const [stabilizationMonthly, setStabilizationMonthly] = useState(0);
@@ -416,7 +420,7 @@ export default function Phase2Page() {
 
   // Deployable capital is no longer user-editable — derived directly from the corrected
   // Audit deployable calculation (src/app/lib/deployableCapital.ts), annualized.
-  const capitalPerYear = snapshot ? Math.round(computeMonthlyDeployable(snapshot) * 12) : 0;
+  const capitalPerYear = snapshot ? Math.round(computeMonthlyDeployable(snapshot, bonusPlan, bonusPayments) * 12) : 0;
 
   // ── Data load ─────────────────────────────────────────────────────────────
 
@@ -426,13 +430,25 @@ export default function Phase2Page() {
       const sb  = getBrowserSupabaseClient();
       const uid = s.user.id;
 
-      const [snapResult, { data: assetRows }, { data: constraintsRow }, { data: assumptionsRow }] =
+      const [snapResult, { data: assetRows }, { data: constraintsRow }, { data: assumptionsRow }, { data: bonusPlanRow }, { data: bonusPaymentRows }] =
         await Promise.all([
           getLatestSnapshotWithId(),
           sb.from('asset_preferences').select('asset_type').eq('user_id', uid).eq('selected', true),
           sb.from('user_constraints').select('hours_per_week,risk_tolerance,hard_constraints').eq('user_id', uid).maybeSingle(),
           sb.from('plan_assumptions').select('*').eq('user_id', uid).maybeSingle(),
+          sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', uid).maybeSingle(),
+          sb.from('bonus_payments_actual').select('amount, date_paid').eq('user_id', uid),
         ]);
+
+      setBonusPlan(bonusPlanRow ? {
+        frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
+        planAmount:   Number(bonusPlanRow.plan_amount),
+        paymentMonth: bonusPlanRow.payment_month,
+      } : null);
+      setBonusPayments((bonusPaymentRows ?? []).map(r => ({
+        amount:   Number(r.amount),
+        datePaid: new Date(r.date_paid),
+      })));
 
       if (snapResult) {
         setSnapshot(snapResult.snapshot);

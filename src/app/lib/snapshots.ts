@@ -41,6 +41,8 @@ interface SnapshotRow {
   has_cpa: boolean;
   cpa_proactive: boolean;
   // Balance sheet
+  primary_residence_value: number;
+  mortgage_balance: number;
   home_equity: number;
   currently_owns_rental: boolean;
   rental_property_value: number;
@@ -56,18 +58,27 @@ interface SnapshotRow {
   discretionary_monthly_spend: number;
   monthly_spend: number;
   emergency_fund: number;
+  extra_debt_payments: number;
   // Liabilities
   car_loan_balance: number;
   car_loan_rate: number;
   car_loan_payment: number;
   student_loan_balance: number;
   student_loan_rate: number;
+  student_loan_payment: number;
   personal_loan_balance: number;
   personal_loan_rate: number;
+  personal_loan_payment: number;
   credit_card_balance: number;
   credit_card_rate: number;
+  credit_card_payment: number;
   business_loan_balance: number;
   business_loan_rate: number;
+  business_loan_payment: number;
+  other_debt_label: string;
+  other_debt_balance: number;
+  other_debt_rate: number;
+  other_debt_payment: number;
   // Retirement plan
   employer_401k_allows_after_tax: boolean | null;
   // Phase 2 / future (preserved for plan generator)
@@ -112,6 +123,8 @@ function toRow(
     has_hsa_available:             s.hasHsaAvailable,
     has_cpa:                       s.hasCpa,
     cpa_proactive:                 s.cpaProactive,
+    primary_residence_value:       s.primaryResidenceValue,
+    mortgage_balance:              s.mortgageBalance,
     home_equity:                   s.homeEquity,
     currently_owns_rental:         s.currentlyOwnsRental,
     rental_property_value:         s.rentalPropertyValue,
@@ -126,17 +139,26 @@ function toRow(
     discretionary_monthly_spend:   s.discretionaryMonthlySpend,
     monthly_spend:                 s.monthlySpend,
     emergency_fund:                s.emergencyFund,
+    extra_debt_payments:           s.extraDebtPayments,
     car_loan_balance:              s.carLoanBalance,
     car_loan_rate:                 s.carLoanRate,
     car_loan_payment:              s.carLoanPayment,
     student_loan_balance:          s.studentLoanBalance,
     student_loan_rate:             s.studentLoanRate,
+    student_loan_payment:         s.studentLoanPayment,
     personal_loan_balance:         s.personalLoanBalance,
     personal_loan_rate:            s.personalLoanRate,
+    personal_loan_payment:        s.personalLoanPayment,
     credit_card_balance:           s.creditCardBalance,
     credit_card_rate:              s.creditCardRate,
+    credit_card_payment:          s.creditCardPayment,
     business_loan_balance:         s.businessLoanBalance,
     business_loan_rate:            s.businessLoanRate,
+    business_loan_payment:        s.businessLoanPayment,
+    other_debt_label:              s.otherDebtLabel,
+    other_debt_balance:            s.otherDebtBalance,
+    other_debt_rate:               s.otherDebtRate,
+    other_debt_payment:            s.otherDebtPayment,
     employer_401k_allows_after_tax: s.employer401kAllowsAfterTax ?? null,
     considering_real_estate:        s.consideringRealEstate,
     planned_property_value:         s.plannedPropertyValue ?? null,
@@ -147,6 +169,8 @@ function toRow(
 }
 
 function fromRow(row: SnapshotRow): FinancialSnapshot {
+  const primaryResidenceValue = Number(row.primary_residence_value ?? 0);
+  const mortgageBalance       = Number(row.mortgage_balance ?? 0);
   return {
     w2Income:                    Number(row.w2_income ?? 0),
     bonusIncome:                 Number(row.bonus_income ?? 0),
@@ -174,7 +198,11 @@ function fromRow(row: SnapshotRow): FinancialSnapshot {
     hasHsaAvailable:             Boolean(row.has_hsa_available),
     hasCpa:                      Boolean(row.has_cpa ?? false),
     cpaProactive:                Boolean(row.cpa_proactive ?? false),
-    homeEquity:                  Number(row.home_equity ?? 0),
+    primaryResidenceValue,
+    mortgageBalance,
+    // Derived from the two raw columns above, not trusted from the stored home_equity
+    // column directly — that column is kept in sync by toRow but isn't the source of truth.
+    homeEquity:                  Math.max(0, primaryResidenceValue - mortgageBalance),
     currentlyOwnsRental:         Boolean(row.currently_owns_rental ?? false),
     rentalPropertyValue:         Number(row.rental_property_value ?? 0),
     rentalMortgageBalance:       Number(row.rental_mortgage_balance ?? 0),
@@ -188,17 +216,26 @@ function fromRow(row: SnapshotRow): FinancialSnapshot {
     discretionaryMonthlySpend:   Number(row.discretionary_monthly_spend ?? 0),
     monthlySpend:                Number(row.monthly_spend ?? 0),
     emergencyFund:               Number(row.emergency_fund ?? 0),
+    extraDebtPayments:           Number(row.extra_debt_payments ?? 0),
     carLoanBalance:              Number(row.car_loan_balance ?? 0),
     carLoanRate:                 Number(row.car_loan_rate ?? 0),
     carLoanPayment:              Number(row.car_loan_payment ?? 0),
     studentLoanBalance:          Number(row.student_loan_balance ?? 0),
     studentLoanRate:             Number(row.student_loan_rate ?? 0),
+    studentLoanPayment:          Number(row.student_loan_payment ?? 0),
     personalLoanBalance:         Number(row.personal_loan_balance ?? 0),
     personalLoanRate:            Number(row.personal_loan_rate ?? 0),
+    personalLoanPayment:         Number(row.personal_loan_payment ?? 0),
     creditCardBalance:           Number(row.credit_card_balance ?? 0),
     creditCardRate:              Number(row.credit_card_rate ?? 0),
+    creditCardPayment:           Number(row.credit_card_payment ?? 0),
     businessLoanBalance:         Number(row.business_loan_balance ?? 0),
     businessLoanRate:            Number(row.business_loan_rate ?? 0),
+    businessLoanPayment:         Number(row.business_loan_payment ?? 0),
+    otherDebtLabel:              String(row.other_debt_label ?? ''),
+    otherDebtBalance:            Number(row.other_debt_balance ?? 0),
+    otherDebtRate:               Number(row.other_debt_rate ?? 0),
+    otherDebtPayment:            Number(row.other_debt_payment ?? 0),
     debts:                       [],  // not persisted; callers merge in if needed
     employer401kAllowsAfterTax:  row.employer_401k_allows_after_tax ?? undefined,
     consideringRealEstate:          Boolean(row.considering_real_estate ?? false),

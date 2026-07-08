@@ -31,14 +31,16 @@ interface FormState {
   taxableBrokerageBalance: string; businessEquityValue: string;
   // S4 — Liabilities
   hasCarLoan: boolean; hasStudentLoan: boolean; hasPersonalLoan: boolean;
-  hasCreditCard: boolean; hasBusinessLoan: boolean;
+  hasCreditCard: boolean; hasBusinessLoan: boolean; hasOtherDebt: boolean;
   carLoanBalance: string; carLoanRate: string; carLoanPayment: string;
-  studentLoanBalance: string; studentLoanRate: string;
-  personalLoanBalance: string; personalLoanRate: string;
-  creditCardBalance: string; creditCardRate: string;
-  businessLoanBalance: string; businessLoanRate: string;
+  studentLoanBalance: string; studentLoanRate: string; studentLoanPayment: string;
+  personalLoanBalance: string; personalLoanRate: string; personalLoanPayment: string;
+  creditCardBalance: string; creditCardRate: string; creditCardPayment: string;
+  businessLoanBalance: string; businessLoanRate: string; businessLoanPayment: string;
+  otherDebtLabel: string; otherDebtBalance: string; otherDebtRate: string; otherDebtPayment: string;
   // S5 — Cash Flow
   essentialMonthlySpend: string; discretionaryMonthlySpend: string; emergencyFund: string;
+  extraDebtPayments: string;
   // S6 — Household
   dependentsUnder18: string; dependentAges: string; spouseHoursPerWeekInBusiness: string;
 }
@@ -60,13 +62,15 @@ const EMPTY: FormState = {
   currentlyOwnsRental: false, rentalPropertyValue: '', rentalMortgageBalance: '',
   retirementBalance: '', traditionalIraBalance: '', taxableBrokerageBalance: '', businessEquityValue: '',
   hasCarLoan: false, hasStudentLoan: false, hasPersonalLoan: false,
-  hasCreditCard: false, hasBusinessLoan: false,
+  hasCreditCard: false, hasBusinessLoan: false, hasOtherDebt: false,
   carLoanBalance: '', carLoanRate: '', carLoanPayment: '',
-  studentLoanBalance: '', studentLoanRate: '',
-  personalLoanBalance: '', personalLoanRate: '',
-  creditCardBalance: '', creditCardRate: '',
-  businessLoanBalance: '', businessLoanRate: '',
+  studentLoanBalance: '', studentLoanRate: '', studentLoanPayment: '',
+  personalLoanBalance: '', personalLoanRate: '', personalLoanPayment: '',
+  creditCardBalance: '', creditCardRate: '', creditCardPayment: '',
+  businessLoanBalance: '', businessLoanRate: '', businessLoanPayment: '',
+  otherDebtLabel: '', otherDebtBalance: '', otherDebtRate: '', otherDebtPayment: '',
   essentialMonthlySpend: '', discretionaryMonthlySpend: '', emergencyFund: '',
+  extraDebtPayments: '',
   dependentsUnder18: '', dependentAges: '', spouseHoursPerWeekInBusiness: '',
 };
 
@@ -110,9 +114,8 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     employer401kAllowsAfterTax: s.employer401kAllowsAfterTax,
     hasCpa:              s.hasCpa,
     cpaProactive:        s.cpaProactive,
-    // Balance sheet: pre-populate primaryResidenceValue from homeEquity (reverse not possible)
-    primaryResidenceValue: rnd(s.homeEquity, 10000),
-    mortgageBalance:       '',
+    primaryResidenceValue: rnd(s.primaryResidenceValue, 10000),
+    mortgageBalance:       rnd(s.mortgageBalance, 10000),
     currentlyOwnsRental:   s.currentlyOwnsRental,
     rentalPropertyValue:   rnd(s.rentalPropertyValue, 10000),
     rentalMortgageBalance: rnd(s.rentalMortgageBalance, 10000),
@@ -130,15 +133,27 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     carLoanPayment:  String(s.carLoanPayment || ''),
     studentLoanBalance: String(s.studentLoanBalance || ''),
     studentLoanRate:    String(s.studentLoanRate || ''),
+    // No backing FinancialSnapshot field for these minimum-payment amounts yet — added
+    // to the form ahead of the type/migration update (next step). Left blank on reload
+    // until that lands.
+    studentLoanPayment: '',
     personalLoanBalance: String(s.personalLoanBalance || ''),
     personalLoanRate:    String(s.personalLoanRate || ''),
+    personalLoanPayment: '',
     creditCardBalance:   String(s.creditCardBalance || ''),
     creditCardRate:      String(s.creditCardRate || ''),
+    creditCardPayment:   '',
     businessLoanBalance: String(s.businessLoanBalance || ''),
     businessLoanRate:    String(s.businessLoanRate || ''),
+    businessLoanPayment: '',
+    // "Other" debt has no backing FinancialSnapshot field yet either (next step).
+    hasOtherDebt: false,
+    otherDebtLabel: '', otherDebtBalance: '', otherDebtRate: '', otherDebtPayment: '',
     essentialMonthlySpend:      rnd(s.essentialMonthlySpend, 500),
     discretionaryMonthlySpend:  rnd(s.discretionaryMonthlySpend, 100),
     emergencyFund:              rnd(s.emergencyFund, 1000),
+    // No backing FinancialSnapshot field yet (next step).
+    extraDebtPayments: '',
     dependentsUnder18: String(s.dependentsUnder18 || ''),
     dependentAges:     s.dependentAges || '',
     spouseHoursPerWeekInBusiness: String(s.spouseHoursPerWeekInBusiness || ''),
@@ -458,6 +473,8 @@ export default function AuditPage() {
         hasHsaAvailable:     form.hasHsaAvailable,
         hasCpa:              form.hasCpa ?? false,
         cpaProactive:        form.cpaProactive ?? false,
+        primaryResidenceValue: n(form.primaryResidenceValue),
+        mortgageBalance:       n(form.mortgageBalance),
         homeEquity:          Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance)),
         currentlyOwnsRental: form.currentlyOwnsRental,
         rentalPropertyValue: form.currentlyOwnsRental ? n(form.rentalPropertyValue) : 0,
@@ -472,23 +489,33 @@ export default function AuditPage() {
         discretionaryMonthlySpend: discretionary,
         monthlySpend:              essential + discretionary,
         emergencyFund:         n(form.emergencyFund),
+        extraDebtPayments:     n(form.extraDebtPayments),
         carLoanBalance:   form.hasCarLoan ? n(form.carLoanBalance) : 0,
         carLoanRate:      form.hasCarLoan ? n(form.carLoanRate) : 0,
         carLoanPayment:   form.hasCarLoan ? n(form.carLoanPayment) : 0,
         studentLoanBalance: form.hasStudentLoan ? n(form.studentLoanBalance) : 0,
         studentLoanRate:    form.hasStudentLoan ? n(form.studentLoanRate) : 0,
+        studentLoanPayment: form.hasStudentLoan ? n(form.studentLoanPayment) : 0,
         personalLoanBalance: form.hasPersonalLoan ? n(form.personalLoanBalance) : 0,
         personalLoanRate:    form.hasPersonalLoan ? n(form.personalLoanRate) : 0,
+        personalLoanPayment: form.hasPersonalLoan ? n(form.personalLoanPayment) : 0,
         creditCardBalance: form.hasCreditCard ? n(form.creditCardBalance) : 0,
         creditCardRate:    form.hasCreditCard ? n(form.creditCardRate) : 0,
+        creditCardPayment: form.hasCreditCard ? n(form.creditCardPayment) : 0,
         businessLoanBalance: form.hasBusinessLoan ? n(form.businessLoanBalance) : 0,
         businessLoanRate:    form.hasBusinessLoan ? n(form.businessLoanRate) : 0,
+        businessLoanPayment: form.hasBusinessLoan ? n(form.businessLoanPayment) : 0,
+        otherDebtLabel:   form.hasOtherDebt ? form.otherDebtLabel.trim() : '',
+        otherDebtBalance: form.hasOtherDebt ? n(form.otherDebtBalance) : 0,
+        otherDebtRate:    form.hasOtherDebt ? n(form.otherDebtRate) : 0,
+        otherDebtPayment: form.hasOtherDebt ? n(form.otherDebtPayment) : 0,
         debts: [
           ...(form.hasCarLoan ? [{ type: 'car', balance: n(form.carLoanBalance), rate: n(form.carLoanRate) / 100, payment: n(form.carLoanPayment) }] : []),
-          ...(form.hasStudentLoan ? [{ type: 'student', balance: n(form.studentLoanBalance), rate: n(form.studentLoanRate) / 100, payment: 0 }] : []),
-          ...(form.hasPersonalLoan ? [{ type: 'personal', balance: n(form.personalLoanBalance), rate: n(form.personalLoanRate) / 100, payment: 0 }] : []),
-          ...(form.hasCreditCard ? [{ type: 'creditCard', balance: n(form.creditCardBalance), rate: n(form.creditCardRate) / 100, payment: 0 }] : []),
-          ...(form.hasBusinessLoan ? [{ type: 'business', balance: n(form.businessLoanBalance), rate: n(form.businessLoanRate) / 100, payment: 0 }] : []),
+          ...(form.hasStudentLoan ? [{ type: 'student', balance: n(form.studentLoanBalance), rate: n(form.studentLoanRate) / 100, payment: n(form.studentLoanPayment) }] : []),
+          ...(form.hasPersonalLoan ? [{ type: 'personal', balance: n(form.personalLoanBalance), rate: n(form.personalLoanRate) / 100, payment: n(form.personalLoanPayment) }] : []),
+          ...(form.hasCreditCard ? [{ type: 'creditCard', balance: n(form.creditCardBalance), rate: n(form.creditCardRate) / 100, payment: n(form.creditCardPayment) }] : []),
+          ...(form.hasBusinessLoan ? [{ type: 'business', balance: n(form.businessLoanBalance), rate: n(form.businessLoanRate) / 100, payment: n(form.businessLoanPayment) }] : []),
+          ...(form.hasOtherDebt ? [{ type: form.otherDebtLabel.trim() || 'other', balance: n(form.otherDebtBalance), rate: n(form.otherDebtRate) / 100, payment: n(form.otherDebtPayment) }] : []),
         ],
         employer401kAllowsAfterTax: form.employer401kAllowsAfterTax,
         // Phase 2 fields — not captured in Phase 1, set to false/undefined
@@ -867,6 +894,7 @@ export default function AuditPage() {
                     { key: 'hasPersonalLoan', label: 'Personal loan' },
                     { key: 'hasCreditCard', label: 'Credit card debt' },
                     { key: 'hasBusinessLoan', label: 'Business loan' },
+                    { key: 'hasOtherDebt', label: 'Other' },
                   ] as { key: keyof FormState; label: string }[]).map(({ key, label }) => {
                     const checked = form[key] as boolean;
                     return (
@@ -880,7 +908,7 @@ export default function AuditPage() {
                 </div>
               </div>
 
-              {!form.hasCarLoan && !form.hasStudentLoan && !form.hasPersonalLoan && !form.hasCreditCard && !form.hasBusinessLoan && (
+              {!form.hasCarLoan && !form.hasStudentLoan && !form.hasPersonalLoan && !form.hasCreditCard && !form.hasBusinessLoan && !form.hasOtherDebt && (
                 <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3">
                   <p className="text-xs text-emerald-700 font-medium">No debt selected — tap any that apply above, or continue to the next section.</p>
                 </div>
@@ -891,7 +919,7 @@ export default function AuditPage() {
                   <Divider label="Car Loan" />
                   <DollarInput label="Balance" value={form.carLoanBalance} onChange={v => set('carLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.carLoanRate} onChange={v => set('carLoanRate', v)} placeholder="6.5" />
-                  <DollarInput label="Monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
+                  <DollarInput label="Minimum monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
                 </div>
               )}
               {form.hasStudentLoan && (
@@ -899,6 +927,7 @@ export default function AuditPage() {
                   <Divider label="Student Loans" />
                   <DollarInput label="Total balance" value={form.studentLoanBalance} onChange={v => set('studentLoanBalance', v)} />
                   <SuffixInput label="Average interest rate" suffix="% APR" value={form.studentLoanRate} onChange={v => set('studentLoanRate', v)} placeholder="6.0" />
+                  <DollarInput label="Minimum monthly payment" value={form.studentLoanPayment} onChange={v => set('studentLoanPayment', v)} />
                 </div>
               )}
               {form.hasPersonalLoan && (
@@ -906,6 +935,7 @@ export default function AuditPage() {
                   <Divider label="Personal Loan" />
                   <DollarInput label="Balance" value={form.personalLoanBalance} onChange={v => set('personalLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.personalLoanRate} onChange={v => set('personalLoanRate', v)} placeholder="9.0" />
+                  <DollarInput label="Minimum monthly payment" value={form.personalLoanPayment} onChange={v => set('personalLoanPayment', v)} />
                 </div>
               )}
               {form.hasCreditCard && (
@@ -913,6 +943,7 @@ export default function AuditPage() {
                   <Divider label="Credit Card Debt" />
                   <DollarInput label="Total balance across all cards" value={form.creditCardBalance} onChange={v => set('creditCardBalance', v)} />
                   <SuffixInput label="Average interest rate" suffix="% APR" value={form.creditCardRate} onChange={v => set('creditCardRate', v)} placeholder="22" />
+                  <DollarInput label="Minimum monthly payment" value={form.creditCardPayment} onChange={v => set('creditCardPayment', v)} />
                 </div>
               )}
               {form.hasBusinessLoan && (
@@ -920,6 +951,18 @@ export default function AuditPage() {
                   <Divider label="Business Loan" />
                   <DollarInput label="Balance" value={form.businessLoanBalance} onChange={v => set('businessLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.businessLoanRate} onChange={v => set('businessLoanRate', v)} placeholder="7.0" />
+                  <DollarInput label="Minimum monthly payment" value={form.businessLoanPayment} onChange={v => set('businessLoanPayment', v)} />
+                </div>
+              )}
+              {form.hasOtherDebt && (
+                <div className="pl-4 border-l-2 border-teal-100 space-y-3">
+                  <Divider label="Other Debt" />
+                  <TextInput label="What is this debt for?"
+                    hint="E.g. home improvement, medical, pool loan — anything that doesn't fit the categories above."
+                    placeholder="Home improvement loan" value={form.otherDebtLabel} onChange={v => set('otherDebtLabel', v)} />
+                  <DollarInput label="Balance" value={form.otherDebtBalance} onChange={v => set('otherDebtBalance', v)} />
+                  <SuffixInput label="Interest rate" suffix="% APR" value={form.otherDebtRate} onChange={v => set('otherDebtRate', v)} placeholder="8.0" />
+                  <DollarInput label="Minimum monthly payment" value={form.otherDebtPayment} onChange={v => set('otherDebtPayment', v)} />
                 </div>
               )}
             </>)}
@@ -948,6 +991,10 @@ export default function AuditPage() {
               <DollarInput label="Emergency fund / liquid savings"
                 hint="Cash in checking, savings, or money market accounts."
                 value={form.emergencyFund} onChange={v => set('emergencyFund', v)} />
+
+              <DollarInput label="Extra payments toward debt beyond minimums (typical monthly amount)"
+                hint="Anything you regularly pay above the minimums listed in Liabilities — separate from discretionary spending."
+                value={form.extraDebtPayments} onChange={v => set('extraDebtPayments', v)} />
             </>)}
 
             {/* ── Section 6: Household ──────────────────────────────── */}

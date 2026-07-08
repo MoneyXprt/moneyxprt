@@ -132,21 +132,21 @@ export function computeMonthlyTakeHome(
 
 /**
  * Monthly capital deployable toward assets: take-home pay minus essential/discretionary
- * spend minus minimum debt payments.
- *
- * Only carLoanPayment exists as a real monthly-payment field on FinancialSnapshot today —
- * student/personal/credit-card/business debts only carry balance + rate, with no payment
- * captured (the audit form hardcodes payment: 0 for those in the `debts[]` array). This is
- * a partial fix pending a proper debt module that captures/derives payments for all debt
- * types; until then, this understates true minimum debt service for anyone carrying
- * non-car debt.
+ * spend minus minimum debt payments across every debt type minus any typical extra
+ * (above-minimum) debt payments the user reported.
  */
 export function computeMonthlyDeployable(
   s: FinancialSnapshot,
   bonusPlan: BonusPlan | null,
   bonusPayments: BonusPayment[],
 ): number {
-  const monthlyTakeHome        = computeMonthlyTakeHome(s, bonusPlan, bonusPayments);
-  const monthlyMinDebtPayments = s.carLoanPayment;
-  return Math.max(0, monthlyTakeHome - s.essentialMonthlySpend - s.discretionaryMonthlySpend - monthlyMinDebtPayments);
+  const monthlyTakeHome = computeMonthlyTakeHome(s, bonusPlan, bonusPayments);
+  const monthlyMinDebtPayments =
+    s.carLoanPayment +
+    s.studentLoanPayment +
+    s.personalLoanPayment +
+    s.creditCardPayment +
+    s.businessLoanPayment +
+    s.otherDebtPayment;
+  return Math.max(0, monthlyTakeHome - s.essentialMonthlySpend - s.discretionaryMonthlySpend - monthlyMinDebtPayments - s.extraDebtPayments);
 }

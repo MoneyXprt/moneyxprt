@@ -7,6 +7,7 @@ import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
 import { computeMonthlyTakeHome, computeMonthlyDeployable } from '@/app/lib/deployableCapital';
+import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ function pct(n: number): string {
 
 function computeTotalDebt(s: FinancialSnapshot): number {
   return s.carLoanBalance + s.studentLoanBalance + s.personalLoanBalance +
-         s.creditCardBalance + s.businessLoanBalance;
+         s.creditCardBalance + s.businessLoanBalance + s.otherDebtBalance;
 }
 
 function computeGrossAnnualIncome(s: FinancialSnapshot): number {
@@ -100,6 +101,8 @@ export default function SnapshotSummaryPage() {
   const [snapshot, setSnapshot] = useState<FinancialSnapshot | null>(null);
   const [results,  setResults]  = useState<StrategyResult[]>([]);
   const [error,    setError]    = useState<string | null>(null);
+  const [bonusPlan, setBonusPlan]         = useState<BonusPlan | null>(null);
+  const [bonusPayments, setBonusPayments] = useState<BonusPayment[]>([]);
 
   const load = useCallback(async (s: Session) => {
     try {
@@ -110,12 +113,26 @@ export default function SnapshotSummaryPage() {
       }
       setSnapshot(latest);
       setResults(evaluateAll(latest));
+
+      const sb = getBrowserSupabaseClient();
+      const [{ data: bonusPlanRow }, { data: bonusPaymentRows }] = await Promise.all([
+        sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', s.user.id).maybeSingle(),
+        sb.from('bonus_payments_actual').select('amount, date_paid').eq('user_id', s.user.id),
+      ]);
+      setBonusPlan(bonusPlanRow ? {
+        frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
+        planAmount:   Number(bonusPlanRow.plan_amount),
+        paymentMonth: bonusPlanRow.payment_month,
+      } : null);
+      setBonusPayments((bonusPaymentRows ?? []).map(r => ({
+        amount:   Number(r.amount),
+        datePaid: new Date(r.date_paid),
+      })));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load snapshot.');
     } finally {
       setLoading(false);
     }
-    void s;
   }, [router]);
 
   useEffect(() => {
@@ -173,13 +190,13 @@ export default function SnapshotSummaryPage() {
   const taxColor: 'green' | 'amber' | 'red' = effectiveTaxRate <= 0.2 ? 'green' : effectiveTaxRate <= 0.3 ? 'amber' : 'red';
 
   // Card 3 — Deployable capital
-  // See computeMonthlyDeployable's doc comment: only carLoanPayment is a real debt-payment
-  // subtraction today — student/personal/credit-card/business debts have no payment field yet.
-  const monthlyTakeHome        = computeMonthlyTakeHome(s);
+  const monthlyTakeHome        = computeMonthlyTakeHome(s, bonusPlan, bonusPayments);
   const monthlyEssential       = s.essentialMonthlySpend;
   const monthlyDisc            = s.discretionaryMonthlySpend;
-  const monthlyMinDebtPayments = s.carLoanPayment;
-  const deployable             = computeMonthlyDeployable(s);
+  const monthlyMinDebtPayments = s.carLoanPayment + s.studentLoanPayment + s.personalLoanPayment +
+                                 s.creditCardPayment + s.businessLoanPayment + s.otherDebtPayment;
+  const monthlyExtraDebt       = s.extraDebtPayments;
+  const deployable             = computeMonthlyDeployable(s, bonusPlan, bonusPayments);
 
   const nextUrl = '/dashboard/asset-preferences' + (freshParam ? '?fresh=true' : '');
 
@@ -312,7 +329,10 @@ export default function SnapshotSummaryPage() {
                 { label: 'Essential monthly spend',     value: `− ${fmtFull(monthlyEssential)}` },
                 { label: 'Discretionary spending',      value: `− ${fmtFull(monthlyDisc)}` },
                 ...(monthlyMinDebtPayments > 0
-                  ? [{ label: 'Minimum debt payments (car loan)', value: `− ${fmtFull(monthlyMinDebtPayments)}` }]
+                  ? [{ label: 'Minimum debt payments', value: `− ${fmtFull(monthlyMinDebtPayments)}` }]
+                  : []),
+                ...(monthlyExtraDebt > 0
+                  ? [{ label: 'Extra payments toward debt', value: `− ${fmtFull(monthlyExtraDebt)}` }]
                   : []),
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">

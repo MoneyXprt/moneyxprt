@@ -33,7 +33,9 @@ export interface FinancialSnapshot {
   hasCpa: boolean;
   cpaProactive: boolean;
   // ── Balance sheet ───────────────────────────────────────────────────────────
-  homeEquity: number;              // primaryResidenceValue − mortgageBalance
+  primaryResidenceValue: number;
+  mortgageBalance: number;
+  homeEquity: number;              // derived: max(0, primaryResidenceValue − mortgageBalance)
   currentlyOwnsRental: boolean;   // true = owns rental property today (not just planning)
   rentalPropertyValue: number;
   rentalMortgageBalance: number;
@@ -48,18 +50,27 @@ export interface FinancialSnapshot {
   discretionaryMonthlySpend: number;
   monthlySpend: number;           // essentialMonthlySpend + discretionaryMonthlySpend
   emergencyFund: number;
+  extraDebtPayments: number;      // typical monthly amount paid above minimums, across all debts
   // ── Liabilities ──────────────────────────────────────────────────────────────
   carLoanBalance: number;
   carLoanRate: number;
   carLoanPayment: number;
   studentLoanBalance: number;
   studentLoanRate: number;
+  studentLoanPayment: number;
   personalLoanBalance: number;
   personalLoanRate: number;
+  personalLoanPayment: number;
   creditCardBalance: number;
   creditCardRate: number;
+  creditCardPayment: number;
   businessLoanBalance: number;
   businessLoanRate: number;
+  businessLoanPayment: number;
+  otherDebtLabel: string;
+  otherDebtBalance: number;
+  otherDebtRate: number;
+  otherDebtPayment: number;
   debts: { type: string; balance: number; rate: number; payment: number }[];
   // ── Retirement plan ────────────────────────────────────────────────────────
   employer401kAllowsAfterTax?: boolean;
