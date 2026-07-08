@@ -131,6 +131,23 @@ export default function BonusLogPage() {
 
   useEffect(() => { fetchPayments(); }, [fetchPayments]);
 
+  // Next.js's Router Cache can preserve this page's mounted instance across
+  // client-side back/forward navigation, so the mount effect above never reruns and
+  // a payment logged elsewhere (or in another tab) silently never shows up on revisit.
+  // Refetch whenever the tab regains focus or becomes visible again.
+  useEffect(() => {
+    const onFocus = () => { fetchPayments(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchPayments();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [fetchPayments]);
+
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
