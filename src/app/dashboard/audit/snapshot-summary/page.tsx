@@ -6,7 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
-import { computeMonthlyTakeHome, computeMonthlyDeployable } from '@/app/lib/deployableCapital';
+import { computeMonthlyTakeHome, computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal } from '@/app/lib/deployableCapital';
 import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
@@ -117,7 +117,7 @@ export default function SnapshotSummaryPage() {
       const sb = getBrowserSupabaseClient();
       const [{ data: bonusPlanRow }, { data: bonusPaymentRows }] = await Promise.all([
         sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', s.user.id).maybeSingle(),
-        sb.from('bonus_payments_actual').select('amount, date_paid').eq('user_id', s.user.id),
+        sb.from('bonus_payments_actual').select('amount, net_amount, date_paid').eq('user_id', s.user.id),
       ]);
       setBonusPlan(bonusPlanRow ? {
         frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
@@ -125,8 +125,9 @@ export default function SnapshotSummaryPage() {
         paymentMonth: bonusPlanRow.payment_month,
       } : null);
       setBonusPayments((bonusPaymentRows ?? []).map(r => ({
-        amount:   Number(r.amount),
-        datePaid: new Date(r.date_paid),
+        amount:    Number(r.amount),
+        datePaid:  new Date(r.date_paid),
+        netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
       })));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load snapshot.');
@@ -189,14 +190,21 @@ export default function SnapshotSummaryPage() {
   const dtiColor: 'green' | 'amber' | 'red' = debtToIncome <= 0.2 ? 'green' : debtToIncome <= 0.4 ? 'amber' : 'red';
   const taxColor: 'green' | 'amber' | 'red' = effectiveTaxRate <= 0.2 ? 'green' : effectiveTaxRate <= 0.3 ? 'amber' : 'red';
 
-  // Card 3 — Deployable capital
-  const monthlyTakeHome        = computeMonthlyTakeHome(s, bonusPlan, bonusPayments);
+  // Card 3 — Deployable capital: "Per month" (recurring only, no bonus) and
+  // "Total this year" (recurring annualized + bonus net estimate/actual as its own line).
+  const monthlyTakeHome        = computeMonthlyTakeHome(s);
   const monthlyEssential       = s.essentialMonthlySpend;
   const monthlyDisc            = s.discretionaryMonthlySpend;
   const monthlyMinDebtPayments = s.carLoanPayment + s.studentLoanPayment + s.personalLoanPayment +
                                  s.creditCardPayment + s.businessLoanPayment + s.otherDebtPayment;
   const monthlyExtraDebt       = s.extraDebtPayments;
-  const deployable             = computeMonthlyDeployable(s, bonusPlan, bonusPayments);
+  const deployableMonthly      = computeMonthlyDeployable(s);
+  const bonusNetEstimate       = computeAnnualBonusNetEstimate(bonusPlan, bonusPayments);
+  const bonusNetEstimateSource = computeAnnualBonusNetEstimateSource(bonusPlan, bonusPayments);
+  const bonusLineLabel         = bonusNetEstimateSource === 'actual'
+    ? 'Bonus (actual, net)'
+    : 'Bonus (estimated, net of withholding)';
+  const deployableAnnualTotal  = computeAnnualDeployableTotal(s, bonusPlan, bonusPayments);
 
   const nextUrl = '/dashboard/asset-preferences' + (freshParam ? '?fresh=true' : '');
 
@@ -316,44 +324,74 @@ export default function SnapshotSummaryPage() {
           <div className="px-5 pt-5 pb-4 border-b border-white/10">
             <p className="text-[10px] font-bold text-[#C9A84C] tracking-widest uppercase mb-1">Card 3 of 3</p>
             <h2 className="text-sm font-bold text-white">Your Deployable Capital</h2>
-            <p className="text-xs text-white/60 mt-0.5">What&apos;s left each month after covering life</p>
+            <p className="text-xs text-white/60 mt-0.5">Recurring capacity each month, plus your full-year total including bonus</p>
           </div>
-          <div className="px-5 py-5">
-            <div className="text-center mb-5">
-              <p className="text-4xl font-bold text-[#C9A84C] tabular-nums">{fmtFull(deployable)}</p>
-              <p className="text-xs text-white/70 font-medium mt-1.5">per month available to deploy</p>
-            </div>
+          <div className="px-5 py-5 space-y-5">
+
+            {/* Per month — recurring only, no bonus */}
             <div>
-              {[
-                { label: 'Estimated monthly take-home', value: fmtFull(monthlyTakeHome) },
-                { label: 'Essential monthly spend',     value: `− ${fmtFull(monthlyEssential)}` },
-                { label: 'Discretionary spending',      value: `− ${fmtFull(monthlyDisc)}` },
-                ...(monthlyMinDebtPayments > 0
-                  ? [{ label: 'Minimum debt payments', value: `− ${fmtFull(monthlyMinDebtPayments)}` }]
-                  : []),
-                ...(monthlyExtraDebt > 0
-                  ? [{ label: 'Extra payments toward debt', value: `− ${fmtFull(monthlyExtraDebt)}` }]
-                  : []),
-              ].map(({ label, value }) => (
-                <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">
-                  <span className="text-xs text-white/70">{label}</span>
-                  <span className="text-xs font-semibold text-white tabular-nums">{value}</span>
+              <div className="text-center mb-4">
+                <p className="text-4xl font-bold text-[#C9A84C] tabular-nums">{fmtFull(deployableMonthly)}</p>
+                <p className="text-xs text-white/70 font-medium mt-1.5">per month, recurring — no bonus</p>
+              </div>
+              <div>
+                {[
+                  { label: 'Estimated monthly take-home', value: fmtFull(monthlyTakeHome) },
+                  { label: 'Essential monthly spend',     value: `− ${fmtFull(monthlyEssential)}` },
+                  { label: 'Discretionary spending',      value: `− ${fmtFull(monthlyDisc)}` },
+                  ...(monthlyMinDebtPayments > 0
+                    ? [{ label: 'Minimum debt payments', value: `− ${fmtFull(monthlyMinDebtPayments)}` }]
+                    : []),
+                  ...(monthlyExtraDebt > 0
+                    ? [{ label: 'Extra payments toward debt', value: `− ${fmtFull(monthlyExtraDebt)}` }]
+                    : []),
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">
+                    <span className="text-xs text-white/70">{label}</span>
+                    <span className="text-xs font-semibold text-white tabular-nums">{value}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-3 border-t border-white/20 mt-1">
+                  <span className="text-xs font-bold text-white">Available to deploy monthly</span>
+                  <span className={`text-sm font-bold tabular-nums ${deployableMonthly > 0 ? 'text-[#C9A84C]' : 'text-red-400'}`}>
+                    {fmtFull(deployableMonthly)}
+                  </span>
                 </div>
-              ))}
-              <div className="flex items-center justify-between pt-3 border-t border-white/20 mt-1">
-                <span className="text-xs font-bold text-white">Available to deploy monthly</span>
-                <span className={`text-sm font-bold tabular-nums ${deployable > 0 ? 'text-[#C9A84C]' : 'text-red-400'}`}>
-                  {fmtFull(deployable)}
-                </span>
+              </div>
+              {deployableMonthly <= 0 && (
+                <div className="mt-4 rounded-xl bg-amber-500/20 border border-amber-400/30 px-4 py-3">
+                  <p className="text-xs text-amber-300 font-medium">
+                    Your spending equals or exceeds your take-home pay. Phase 2 will identify cash flow levers and tax strategies that can change this.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Total this year — recurring annualized + bonus net estimate/actual */}
+            <div className="pt-1 border-t border-white/10">
+              <div className="text-center mb-4 mt-4">
+                <p className="text-3xl font-bold text-white tabular-nums">{fmtFull(deployableAnnualTotal)}</p>
+                <p className="text-xs text-white/70 font-medium mt-1.5">total this year, including bonus</p>
+              </div>
+              <div>
+                <div className="flex items-center justify-between py-2.5 border-b border-white/10">
+                  <span className="text-xs text-white/70">Recurring (per month × 12)</span>
+                  <span className="text-xs font-semibold text-white tabular-nums">{fmtFull(deployableMonthly * 12)}</span>
+                </div>
+                {bonusPlan && (
+                  <div className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">
+                    <span className="text-xs text-white/70">{bonusLineLabel}</span>
+                    <span className="text-xs font-semibold text-white tabular-nums">+ {fmtFull(bonusNetEstimate)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-3 border-t border-white/20 mt-1">
+                  <span className="text-xs font-bold text-white">Total available to deploy this year</span>
+                  <span className="text-sm font-bold tabular-nums text-[#C9A84C]">
+                    {fmtFull(deployableAnnualTotal)}
+                  </span>
+                </div>
               </div>
             </div>
-            {deployable <= 0 && (
-              <div className="mt-4 rounded-xl bg-amber-500/20 border border-amber-400/30 px-4 py-3">
-                <p className="text-xs text-amber-300 font-medium">
-                  Your spending equals or exceeds your take-home pay. Phase 2 will identify cash flow levers and tax strategies that can change this.
-                </p>
-              </div>
-            )}
           </div>
         </div>
 

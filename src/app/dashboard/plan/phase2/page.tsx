@@ -6,7 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
-import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
+import { computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal } from '@/app/lib/deployableCapital';
 import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
@@ -419,8 +419,14 @@ export default function Phase2Page() {
   const selectedRentalType = assetSelections.has('long_term_rental') || assetSelections.has('short_term_rental');
 
   // Deployable capital is no longer user-editable — derived directly from the corrected
-  // Audit deployable calculation (src/app/lib/deployableCapital.ts), annualized.
-  const capitalPerYear = snapshot ? Math.round(computeMonthlyDeployable(snapshot, bonusPlan, bonusPayments) * 12) : 0;
+  // Audit deployable calculation (src/app/lib/deployableCapital.ts).
+  // "Per month" is recurring-only (no bonus); capitalPerYear (fed to the plan generator)
+  // is the full "Total this year" figure — recurring annualized + bonus net estimate —
+  // since that's the true annual investable-capital estimate for anyone with a bonus plan.
+  const monthlyDeployable = snapshot ? computeMonthlyDeployable(snapshot) : 0;
+  const bonusNetEstimate       = computeAnnualBonusNetEstimate(bonusPlan, bonusPayments);
+  const bonusNetEstimateSource = computeAnnualBonusNetEstimateSource(bonusPlan, bonusPayments);
+  const capitalPerYear    = snapshot ? Math.round(computeAnnualDeployableTotal(snapshot, bonusPlan, bonusPayments)) : 0;
 
   // ── Data load ─────────────────────────────────────────────────────────────
 
@@ -437,7 +443,7 @@ export default function Phase2Page() {
           sb.from('user_constraints').select('hours_per_week,risk_tolerance,hard_constraints').eq('user_id', uid).maybeSingle(),
           sb.from('plan_assumptions').select('*').eq('user_id', uid).maybeSingle(),
           sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', uid).maybeSingle(),
-          sb.from('bonus_payments_actual').select('amount, date_paid').eq('user_id', uid),
+          sb.from('bonus_payments_actual').select('amount, net_amount, date_paid').eq('user_id', uid),
         ]);
 
       setBonusPlan(bonusPlanRow ? {
@@ -446,8 +452,9 @@ export default function Phase2Page() {
         paymentMonth: bonusPlanRow.payment_month,
       } : null);
       setBonusPayments((bonusPaymentRows ?? []).map(r => ({
-        amount:   Number(r.amount),
-        datePaid: new Date(r.date_paid),
+        amount:    Number(r.amount),
+        datePaid:  new Date(r.date_paid),
+        netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
       })));
 
       if (snapResult) {
@@ -1109,14 +1116,33 @@ export default function Phase2Page() {
           </p>
         </div>
 
-        {/* Capital per year — derived from Audit deployable calculation, read-only */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
+        {/* Deployable capital — derived from Audit deployable calculation, read-only.
+            "Per month" is recurring only (no bonus); "Total this year" adds the bonus
+            net estimate/actual as its own line, never smoothed into the monthly figure. */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
           <div>
-            <p className="text-sm font-semibold text-gray-900">How much can you deploy toward assets each year?</p>
-            <p className="text-xs text-gray-400 mt-0.5">Calculated from your Financial Snapshot: take-home pay minus expenses and debt payments, annualized.</p>
-            <p className="text-3xl font-extrabold text-emerald-700 tabular-nums mt-2 leading-none">
-              {fmt(capitalPerYear)}<span className="text-base font-medium text-gray-400 ml-2">/ year</span>
-            </p>
+            <p className="text-sm font-semibold text-gray-900">How much can you deploy toward assets?</p>
+            <p className="text-xs text-gray-400 mt-0.5">Calculated from your Financial Snapshot: take-home pay minus expenses and debt payments.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Per month</p>
+              <p className="text-2xl font-extrabold text-emerald-700 tabular-nums mt-1 leading-none">
+                {fmt(monthlyDeployable)}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-1">recurring — no bonus</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Total this year</p>
+              <p className="text-2xl font-extrabold text-emerald-700 tabular-nums mt-1 leading-none">
+                {fmt(capitalPerYear)}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {bonusPlan
+                  ? `incl. ${fmt(bonusNetEstimate)} bonus (${bonusNetEstimateSource === 'actual' ? 'actual, net' : 'est., net of withholding'})`
+                  : 'recurring × 12'}
+              </p>
+            </div>
           </div>
         </div>
 
