@@ -5,6 +5,7 @@
 
 import type { GeneratedPlan } from './planGenerator';
 import type { FinancialSnapshot } from './strategies/types';
+import type { BonusPlan } from './deployableCapital';
 import { evaluateAll } from './strategies';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ export function generateActions(
   plan: GeneratedPlan,
   snapshot: FinancialSnapshot,
   repsHoursThisYear = 0,
+  bonusPlan: BonusPlan | null = null,
 ): ExecutionAction[] {
   const now   = new Date();
   const month = now.getMonth() + 1; // 1-indexed
@@ -266,6 +268,19 @@ export function generateActions(
       title: 'Complete 750 REPS hour requirement',
       description: 'Material participation in real estate requires 750+ hours/year and more time in RE than any other profession. Log and document every hour by December 31 to qualify for the powerful tax benefits of REPS status.',
       category: 'this_year', phase: 3, strategy_id: 'reps',
+      estimated_annual_value: 0, estimated_months_saved: 0,
+      completed: false, completed_at: null, due_date: endOfYear(now), sort_order: 200 + thisYear.length,
+    });
+  }
+
+  // Log this year's bonus payment — only relevant for quarterly/annual plans with a
+  // payment month set. Monthly-frequency bonuses never check bonus_payments_actual at
+  // all (see deployableCapital.ts), so there's nothing to log against for them.
+  if (bonusPlan && bonusPlan.frequency !== 'monthly' && bonusPlan.paymentMonth != null) {
+    thisYear.push({
+      title: "Log this year's bonus payment",
+      description: 'Once your bonus is actually paid, log the amount (and net, if you know it) in Actuals. Your deployable capital currently uses a withholding estimate until you do — real numbers replace the estimate automatically.',
+      category: 'this_year', phase: 2, strategy_id: null,
       estimated_annual_value: 0, estimated_months_saved: 0,
       completed: false, completed_at: null, due_date: endOfYear(now), sort_order: 200 + thisYear.length,
     });

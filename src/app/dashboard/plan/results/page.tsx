@@ -8,6 +8,7 @@ import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generatePlan, savePlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
+import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -461,6 +462,7 @@ export default function PlanResultsPage() {
         { data: assetRows, error: assetError },
         { data: constraintsRow },
         { data: prevPlanRow },
+        { data: bonusPlanRow },
       ] = await Promise.all([
         sb.from('freedom_profiles')
           .select('vision_text, target_free_age, freedom_type, freedom_number_monthly, portfolio_target, housing, health_insurance, food, transportation, travel, kids, savings_buffer, misc')
@@ -484,7 +486,17 @@ export default function PlanResultsPage() {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        sb.from('bonus_plan')
+          .select('frequency, plan_amount, payment_month')
+          .eq('user_id', userId)
+          .maybeSingle(),
       ]);
+
+      const bonusPlan: BonusPlan | null = bonusPlanRow ? {
+        frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
+        planAmount:   Number(bonusPlanRow.plan_amount),
+        paymentMonth: bonusPlanRow.payment_month,
+      } : null;
 
       console.log('[plan/results] assetRows:', assetRows, 'error:', assetError?.message);
 
@@ -574,7 +586,7 @@ export default function PlanResultsPage() {
       // Regenerate execution actions — once per page mount, not on every render
       if (!actionsSaved.current) {
         actionsSaved.current = true;
-        const execActions = generateActions(generated, snapshot, 0);
+        const execActions = generateActions(generated, snapshot, 0, bonusPlan);
         saveActions(execActions, userId).catch(e => console.warn('saveActions failed:', e));
       }
 

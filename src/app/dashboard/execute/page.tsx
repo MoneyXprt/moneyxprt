@@ -8,6 +8,7 @@ import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { ExecutionAction } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan } from '@/app/lib/planGenerator';
+import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -21,6 +22,13 @@ function isPartnerAction(action: ExecutionAction) {
     action.strategy_id === 'reps' ||
     action.title.toLowerCase().includes('spouse')
   );
+}
+
+// This is a task reminder, not a data-entry form — clicking through takes the user
+// straight to the logging form (not the Actuals hub) since that's the one thing this
+// reminder is about.
+function isBonusLogAction(action: ExecutionAction) {
+  return action.title === "Log this year's bonus payment";
 }
 
 // ─── Milestone overlay (This Year completions) ────────────────────────────────
@@ -266,6 +274,18 @@ function MilestoneCard({
             </p>
           )}
 
+          {isBonusLogAction(action) && !action.completed && (
+            <Link
+              href="/dashboard/bonus-log"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+            >
+              Log now
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          )}
+
           {action.completed && !justCompleted && (
             <p className="mt-1.5 text-[10px] text-gray-400">
               {completedByMe
@@ -340,8 +360,96 @@ export default function ExecutePage() {
   // Partner context
   const [isPartnerView, setIsPartnerView]   = useState(false);
   const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
+  const [refreshing, setRefreshing]         = useState(false);
 
   const dismissOverlay = useCallback(() => setMilestoneOverlay(null), []);
+
+  // Shared by the initial auto-generate path and the manual "Refresh actions" button —
+  // fetches fresh plan/snapshot/REPS-hours/bonusPlan data, regenerates via
+  // generateActions, and persists via saveActions' existing delete-and-reupsert-by-title
+  // merge logic. userId here is always the data owner (never a partner's own id — see
+  // callers), since a partner has no plan/snapshot of their own to regenerate from.
+  async function regenerateActions(userId: string): Promise<void> {
+    const sb = getBrowserSupabaseClient();
+    const currentYear = new Date().getFullYear();
+
+    const [planResult, snapshotResult, repsResult, bonusPlanResult] = await Promise.all([
+      sb
+        .from('generated_plans')
+        .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, deployable_capital_per_year')
+        .eq('user_id', userId)
+        .eq('is_current', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getLatestSnapshot(),
+      sb
+        .from('material_participation_logs')
+        .select('hours_logged')
+        .eq('user_id', userId)
+        .gte('date', `${currentYear}-01-01`)
+        .lt('date', `${currentYear + 1}-01-01`),
+      sb
+        .from('bonus_plan')
+        .select('frequency, plan_amount, payment_month')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ]);
+
+    if (!planResult.data || !snapshotResult) {
+      setNoPlan(true);
+      return;
+    }
+
+    const row = planResult.data;
+    const repsHours = (repsResult.data ?? []).reduce(
+      (s: number, r: { hours_logged: number }) => s + Number(r.hours_logged ?? 0),
+      0,
+    );
+
+    const plan: GeneratedPlan = {
+      freedomGap:               row.freedom_gap as GeneratedPlan['freedomGap'],
+      phases:                   row.phases as GeneratedPlan['phases'],
+      taxStrategyStack:         row.tax_strategy_stack as GeneratedPlan['taxStrategyStack'],
+      assetRoadmap:             row.asset_roadmap as GeneratedPlan['assetRoadmap'],
+      deployableCapitalPerYear: Number(row.deployable_capital_per_year),
+      aiNarrative:              null,
+    };
+
+    setFreedomYear(plan.freedomGap.projectedFreedomYear);
+
+    const bonusPlanRow = bonusPlanResult.data;
+    const bonusPlan: BonusPlan | null = bonusPlanRow ? {
+      frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
+      planAmount:   Number(bonusPlanRow.plan_amount),
+      paymentMonth: bonusPlanRow.payment_month,
+    } : null;
+
+    const generated = generateActions(plan, snapshotResult, repsHours, bonusPlan);
+    try {
+      await saveActions(generated, userId);
+    } catch (e) {
+      console.warn('saveActions failed:', e);
+    }
+
+    const { data: saved } = await sb
+      .from('execution_actions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('sort_order');
+
+    setActions((saved ?? []) as ExecutionAction[]);
+  }
+
+  async function handleRefreshActions() {
+    if (!session || isPartnerView || refreshing) return;
+    setRefreshing(true);
+    try {
+      await regenerateActions(session.user.id);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     const sb = getBrowserSupabaseClient();
@@ -381,8 +489,6 @@ export default function ExecutePage() {
       .maybeSingle()
       .then(({ data }) => setVisionText(data?.vision_text ?? null));
 
-    const currentYear = new Date().getFullYear();
-
     const { data: actionRows } = await sb
       .from('execution_actions')
       .select('*')
@@ -414,63 +520,7 @@ export default function ExecutePage() {
 
     // Self — auto-generate from latest plan
     setGenerating(true);
-
-    const [planResult, snapshotResult, repsResult] = await Promise.all([
-      sb
-        .from('generated_plans')
-        .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, deployable_capital_per_year')
-        .eq('user_id', userId)
-        .eq('is_current', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      getLatestSnapshot(),
-      sb
-        .from('material_participation_logs')
-        .select('hours_logged')
-        .eq('user_id', userId)
-        .gte('date', `${currentYear}-01-01`)
-        .lt('date', `${currentYear + 1}-01-01`),
-    ]);
-
-    if (!planResult.data || !snapshotResult) {
-      setNoPlan(true);
-      setLoading(false);
-      setGenerating(false);
-      return;
-    }
-
-    const row = planResult.data;
-    const repsHours = (repsResult.data ?? []).reduce(
-      (s: number, r: { hours_logged: number }) => s + Number(r.hours_logged ?? 0),
-      0,
-    );
-
-    const plan: GeneratedPlan = {
-      freedomGap:               row.freedom_gap as GeneratedPlan['freedomGap'],
-      phases:                   row.phases as GeneratedPlan['phases'],
-      taxStrategyStack:         row.tax_strategy_stack as GeneratedPlan['taxStrategyStack'],
-      assetRoadmap:             row.asset_roadmap as GeneratedPlan['assetRoadmap'],
-      deployableCapitalPerYear: Number(row.deployable_capital_per_year),
-      aiNarrative:              null,
-    };
-
-    setFreedomYear(plan.freedomGap.projectedFreedomYear);
-
-    const generated = generateActions(plan, snapshotResult, repsHours);
-    try {
-      await saveActions(generated, userId);
-    } catch (e) {
-      console.warn('saveActions failed:', e);
-    }
-
-    const { data: saved } = await sb
-      .from('execution_actions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('sort_order');
-
-    setActions((saved ?? []) as ExecutionAction[]);
+    await regenerateActions(userId);
     setLoading(false);
     setGenerating(false);
   }
@@ -627,12 +677,27 @@ export default function ExecutePage() {
               <p className="text-sm font-bold text-gray-900">Your Execution Plan</p>
               <p className="text-[10px] text-gray-400 leading-none mt-0.5">Every action you complete moves your freedom date closer.</p>
             </div>
-            <button
-              onClick={() => getBrowserSupabaseClient().auth.signOut()}
-              className="text-xs text-gray-400 hover:text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-1">
+              {!isPartnerView && (
+                <button
+                  onClick={handleRefreshActions}
+                  disabled={refreshing || loading}
+                  title="Refresh actions"
+                  aria-label="Refresh actions"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition"
+                >
+                  <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={() => getBrowserSupabaseClient().auth.signOut()}
+                className="text-xs text-gray-400 hover:text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </header>
 
