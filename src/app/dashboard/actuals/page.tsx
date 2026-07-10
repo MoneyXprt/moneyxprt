@@ -1,9 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { estimateNetBonus } from '@/app/lib/deployableCapital';
+import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
 import type { Session } from '@supabase/supabase-js';
+
+// ─── Unapplied bonus → debt ─────────────────────────────────────────────────
+
+interface UnappliedBonusRow {
+  id: string;
+  amount: number;
+  net_amount: number | null;
+  date_paid: string;
+}
+
+function fmtUsd(v: number) {
+  return `$${Math.round(v).toLocaleString()}`;
+}
 
 // ─── Loggable items registry ───────────────────────────────────────────────────
 // Add a new entry here to add a new card to the hub — nothing else on this page
@@ -116,15 +131,141 @@ export default function ActualsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
+  const [unappliedBonuses, setUnappliedBonuses] = useState<UnappliedBonusRow[]>([]);
+  const [applyingId, setApplyingId]             = useState<string | null>(null);
+  const [applyError, setApplyError]             = useState<string | null>(null);
+  const [payoffCelebration, setPayoffCelebration] = useState<{
+    paidOffName: string;
+    freedMinimumPayment: number;
+    nextDebtName: string | null;
+  } | null>(null);
+
+  const fetchUnappliedBonuses = useCallback(async (userId: string) => {
+    const sb = getBrowserSupabaseClient();
+    const { data } = await sb
+      .from('bonus_payments_actual')
+      .select('id, amount, net_amount, date_paid')
+      .eq('user_id', userId)
+      .eq('applied_to_debt', false)
+      .order('date_paid', { ascending: false });
+    setUnappliedBonuses((data ?? []) as UnappliedBonusRow[]);
+  }, []);
+
   useEffect(() => {
     const sb = getBrowserSupabaseClient();
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setSessionLoading(false);
+      if (s) fetchUnappliedBonuses(s.user.id);
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debt just hit $0 — mark it inactive, re-rank the remaining active debts (snowball
+  // default, same as the initial migration ranking), and surface (display only — not
+  // wired into any deployable-capital calculation yet) that its minimum payment is now
+  // free to redirect toward the next-ranked debt.
+  const handleDebtPaidOff = async (
+    sb: ReturnType<typeof getBrowserSupabaseClient>,
+    userId: string,
+    paidOffName: string,
+    freedMinimumPayment: number,
+  ) => {
+    const { data: allDebts } = await sb
+      .from('debts')
+      .select('id, current_balance, interest_rate, is_active')
+      .eq('user_id', userId);
+
+    const ranked = computeDebtPayoffOrder(
+      (allDebts ?? []).map(d => ({
+        id: d.id,
+        currentBalance: Number(d.current_balance),
+        interestRate: Number(d.interest_rate),
+        isActive: d.is_active,
+      })),
+      'snowball',
+    );
+
+    await Promise.all(
+      ranked.map(r => sb.from('debts').update({ payoff_order: r.payoffOrder }).eq('id', r.id)),
+    );
+
+    const nextEntry = ranked.find(r => r.payoffOrder === 1);
+    let nextDebtName: string | null = null;
+    if (nextEntry) {
+      const { data: nextDebtRow } = await sb.from('debts').select('name').eq('id', nextEntry.id).maybeSingle();
+      nextDebtName = nextDebtRow?.name ?? null;
+    }
+
+    setPayoffCelebration({ paidOffName, freedMinimumPayment, nextDebtName });
+  };
+
+  // This is a manual, explicit action — never automatic. The user must click
+  // "Apply to debt" for each bonus payment individually.
+  const handleApplyToDebt = async (bonus: UnappliedBonusRow) => {
+    if (!session || applyingId) return;
+    setApplyingId(bonus.id);
+    setApplyError(null);
+    try {
+      const sb = getBrowserSupabaseClient();
+      const userId = session.user.id;
+
+      const { data: topDebt, error: debtError } = await sb
+        .from('debts')
+        .select('id, name, current_balance, minimum_payment')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('payoff_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (debtError) throw debtError;
+      if (!topDebt) {
+        setApplyError('No active debts to apply this to — migrate or add a debt first.');
+        return;
+      }
+
+      const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
+      const newBalance  = Math.max(0, Number(topDebt.current_balance) - appliedAmount);
+      const justPaidOff = newBalance === 0;
+
+      const { error: paymentError } = await sb.from('debt_payments').insert({
+        debt_id:      topDebt.id,
+        user_id:      userId,
+        amount:       appliedAmount,
+        payment_date: bonus.date_paid,
+        source:       'lump_sum',
+        note:         'Applied from logged bonus payment',
+      });
+      if (paymentError) throw paymentError;
+
+      const { error: updateDebtError } = await sb
+        .from('debts')
+        .update({
+          current_balance: newBalance,
+          ...(justPaidOff ? { is_active: false, paid_off_at: new Date().toISOString() } : {}),
+        })
+        .eq('id', topDebt.id);
+      if (updateDebtError) throw updateDebtError;
+
+      const { error: updateBonusError } = await sb
+        .from('bonus_payments_actual')
+        .update({ applied_to_debt: true })
+        .eq('id', bonus.id);
+      if (updateBonusError) throw updateBonusError;
+
+      if (justPaidOff) {
+        await handleDebtPaidOff(sb, userId, topDebt.name, Number(topDebt.minimum_payment));
+      }
+
+      setUnappliedBonuses(prev => prev.filter(b => b.id !== bonus.id));
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Failed to apply payment. Please try again.');
+    } finally {
+      setApplyingId(null);
+    }
+  };
 
   if (sessionLoading) {
     return (
@@ -169,6 +310,60 @@ export default function ActualsPage() {
             Log what actually happened — real numbers replace the estimates your plan uses.
           </p>
         </div>
+
+        {/* ── Debt paid off celebration ─────────────────────────────────
+            Display only — freedMinimumPayment is not yet wired into any
+            deployable-capital calculation. */}
+        {payoffCelebration && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 relative">
+            <button
+              type="button"
+              onClick={() => setPayoffCelebration(null)}
+              aria-label="Dismiss"
+              className="absolute top-3 right-3 text-emerald-400 hover:text-emerald-700 transition text-sm leading-none"
+            >
+              ✕
+            </button>
+            <p className="text-sm font-bold text-emerald-900 pr-6">🎉 {payoffCelebration.paidOffName} paid off!</p>
+            <p className="text-xs text-emerald-800 mt-1.5 leading-relaxed">
+              That frees up {fmtUsd(payoffCelebration.freedMinimumPayment)}/month you were paying toward it.
+              {payoffCelebration.nextDebtName
+                ? ` Consider redirecting it toward ${payoffCelebration.nextDebtName}, your next-ranked debt.`
+                : ' You have no other active debts — consider redirecting it toward savings or investing.'}
+            </p>
+          </div>
+        )}
+
+        {/* ── Unapplied bonus payments → debt ─────────────────────────── */}
+        {unappliedBonuses.length > 0 && (
+          <div className="space-y-3">
+            {unappliedBonuses.map(bonus => {
+              const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
+              const isNetKnown    = bonus.net_amount != null;
+              return (
+                <div key={bonus.id} className="bg-white rounded-2xl border border-indigo-100 shadow-sm px-5 py-4">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {fmtUsd(bonus.amount)} bonus logged on {new Date(bonus.date_paid + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Apply {fmtUsd(appliedAmount)} ({isNetKnown ? 'logged net' : 'estimated net after withholding'}) to your top-ranked active debt.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyToDebt(bonus)}
+                    disabled={applyingId === bonus.id}
+                    className="mt-3 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
+                  >
+                    {applyingId === bonus.id ? 'Applying…' : `Apply ${fmtUsd(appliedAmount)} to debt`}
+                  </button>
+                </div>
+              );
+            })}
+            {applyError && (
+              <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{applyError}</p>
+            )}
+          </div>
+        )}
 
         <div className="space-y-3">
           {LOGGABLE_ITEMS.map(item => (

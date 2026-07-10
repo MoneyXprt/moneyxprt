@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { saveSnapshot, getLatestSnapshot } from '@/app/lib/snapshots';
+import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -38,6 +39,12 @@ interface FormState {
   creditCardBalance: string; creditCardRate: string; creditCardPayment: string;
   businessLoanBalance: string; businessLoanRate: string; businessLoanPayment: string;
   otherDebtLabel: string; otherDebtBalance: string; otherDebtRate: string; otherDebtPayment: string;
+  // Debt-tracker sync only — original starting balance per debt, optional (falls
+  // back to current balance if left blank). Not part of FinancialSnapshot; only read
+  // by syncDebtsTracker.
+  carLoanOriginalBalance: string; studentLoanOriginalBalance: string;
+  personalLoanOriginalBalance: string; creditCardOriginalBalance: string;
+  businessLoanOriginalBalance: string; otherDebtOriginalBalance: string;
   // S5 — Cash Flow
   essentialMonthlySpend: string; discretionaryMonthlySpend: string; emergencyFund: string;
   extraDebtPayments: string;
@@ -69,6 +76,9 @@ const EMPTY: FormState = {
   creditCardBalance: '', creditCardRate: '', creditCardPayment: '',
   businessLoanBalance: '', businessLoanRate: '', businessLoanPayment: '',
   otherDebtLabel: '', otherDebtBalance: '', otherDebtRate: '', otherDebtPayment: '',
+  carLoanOriginalBalance: '', studentLoanOriginalBalance: '',
+  personalLoanOriginalBalance: '', creditCardOriginalBalance: '',
+  businessLoanOriginalBalance: '', otherDebtOriginalBalance: '',
   essentialMonthlySpend: '', discretionaryMonthlySpend: '', emergencyFund: '',
   extraDebtPayments: '',
   dependentsUnder18: '', dependentAges: '', spouseHoursPerWeekInBusiness: '',
@@ -148,6 +158,10 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     otherDebtBalance: String(s.otherDebtBalance || ''),
     otherDebtRate:    String(s.otherDebtRate || ''),
     otherDebtPayment: String(s.otherDebtPayment || ''),
+    // Migration-only fields — never persisted, always blank on reload.
+    carLoanOriginalBalance: '', studentLoanOriginalBalance: '',
+    personalLoanOriginalBalance: '', creditCardOriginalBalance: '',
+    businessLoanOriginalBalance: '', otherDebtOriginalBalance: '',
     essentialMonthlySpend:      rnd(s.essentialMonthlySpend, 500),
     discretionaryMonthlySpend:  rnd(s.discretionaryMonthlySpend, 100),
     emergencyFund:              rnd(s.emergencyFund, 1000),
@@ -543,11 +557,143 @@ export default function AuditPage() {
         if (bonusPlanError) throw bonusPlanError;
       }
 
+      // Silent debt-tracker sync — invisible background behavior, no user-facing
+      // message. A failure here must never block the main Audit save/redirect, so
+      // it's deliberately swallowed (logged only) rather than rethrown.
+      if (session) {
+        try {
+          await syncDebtsTracker(session.user.id);
+        } catch (err) {
+          console.warn('syncDebtsTracker failed:', err instanceof Error ? err.message : err);
+        }
+      }
+
       router.push('/dashboard/audit/snapshot-summary' + (freshParam ? '?fresh=true' : ''));
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed. Please try again.');
       setSaving(false);
     }
+  };
+
+  // ── Debt-tracker sync (silent) ────────────────────────────────────────────
+  // Runs on every Audit save. For each debt type with a balance > 0: if no row
+  // exists yet for (user_id, debt_type), insert one (using the original-balance
+  // fallback below). If a row already exists, only refresh interest_rate,
+  // minimum_payment, and name — current_balance is owned by the debt-payment
+  // tracking flow (Actuals) once a debt is in the tracker, and must never be
+  // silently overwritten here. debt_type has no unique DB constraint, so this is
+  // an application-level "find, then insert-or-update" rather than a real upsert.
+  // Only re-ranks payoff_order when a new debt was actually inserted this save —
+  // pure updates to existing debts don't change balance ordering, so skipping the
+  // re-rank avoids unnecessary writes on every plain save.
+  const syncDebtsTracker = async (userId: string) => {
+    const sb = getBrowserSupabaseClient();
+
+    const entries: {
+      debt_type: string; name: string;
+      balance: number; originalBalance: number;
+      rate: number; payment: number;
+    }[] = [];
+
+    if (form.hasCarLoan && n(form.carLoanBalance) > 0) {
+      entries.push({
+        debt_type: 'car_loan', name: 'Car Loan',
+        balance: n(form.carLoanBalance),
+        originalBalance: n(form.carLoanOriginalBalance) || n(form.carLoanBalance),
+        rate: n(form.carLoanRate), payment: n(form.carLoanPayment),
+      });
+    }
+    if (form.hasStudentLoan && n(form.studentLoanBalance) > 0) {
+      entries.push({
+        debt_type: 'student_loan', name: 'Student Loan',
+        balance: n(form.studentLoanBalance),
+        originalBalance: n(form.studentLoanOriginalBalance) || n(form.studentLoanBalance),
+        rate: n(form.studentLoanRate), payment: n(form.studentLoanPayment),
+      });
+    }
+    if (form.hasPersonalLoan && n(form.personalLoanBalance) > 0) {
+      entries.push({
+        debt_type: 'personal_loan', name: 'Personal Loan',
+        balance: n(form.personalLoanBalance),
+        originalBalance: n(form.personalLoanOriginalBalance) || n(form.personalLoanBalance),
+        rate: n(form.personalLoanRate), payment: n(form.personalLoanPayment),
+      });
+    }
+    if (form.hasCreditCard && n(form.creditCardBalance) > 0) {
+      entries.push({
+        debt_type: 'credit_card', name: 'Credit Card',
+        balance: n(form.creditCardBalance),
+        originalBalance: n(form.creditCardOriginalBalance) || n(form.creditCardBalance),
+        rate: n(form.creditCardRate), payment: n(form.creditCardPayment),
+      });
+    }
+    if (form.hasBusinessLoan && n(form.businessLoanBalance) > 0) {
+      entries.push({
+        debt_type: 'business_loan', name: 'Business Loan',
+        balance: n(form.businessLoanBalance),
+        originalBalance: n(form.businessLoanOriginalBalance) || n(form.businessLoanBalance),
+        rate: n(form.businessLoanRate), payment: n(form.businessLoanPayment),
+      });
+    }
+    if (form.hasOtherDebt && n(form.otherDebtBalance) > 0) {
+      entries.push({
+        debt_type: 'other', name: form.otherDebtLabel.trim() || 'Other Debt',
+        balance: n(form.otherDebtBalance),
+        originalBalance: n(form.otherDebtOriginalBalance) || n(form.otherDebtBalance),
+        rate: n(form.otherDebtRate), payment: n(form.otherDebtPayment),
+      });
+    }
+
+    if (entries.length === 0) return;
+
+    let anyInserted = false;
+
+    for (const entry of entries) {
+      const { data: existing, error: findError } = await sb
+        .from('debts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('debt_type', entry.debt_type)
+        .maybeSingle();
+      if (findError) { console.warn('debts sync lookup failed:', findError.message); continue; }
+
+      if (existing) {
+        const { error: updateError } = await sb
+          .from('debts')
+          .update({ name: entry.name, interest_rate: entry.rate, minimum_payment: entry.payment })
+          .eq('id', existing.id);
+        if (updateError) console.warn('debts sync update failed:', updateError.message);
+      } else {
+        const { error: insertError } = await sb.from('debts').insert({
+          user_id: userId, name: entry.name, debt_type: entry.debt_type,
+          original_balance: entry.originalBalance, current_balance: entry.balance,
+          interest_rate: entry.rate, minimum_payment: entry.payment,
+        });
+        if (insertError) { console.warn('debts sync insert failed:', insertError.message); continue; }
+        anyInserted = true;
+      }
+    }
+
+    if (!anyInserted) return;
+
+    const { data: allDebts } = await sb
+      .from('debts')
+      .select('id, current_balance, interest_rate, is_active')
+      .eq('user_id', userId);
+
+    const ranked = computeDebtPayoffOrder(
+      (allDebts ?? []).map(d => ({
+        id: d.id,
+        currentBalance: Number(d.current_balance),
+        interestRate: Number(d.interest_rate),
+        isActive: d.is_active,
+      })),
+      'snowball',
+    );
+
+    await Promise.all(
+      ranked.map(r => sb.from('debts').update({ payoff_order: r.payoffOrder }).eq('id', r.id)),
+    );
   };
 
   // ── Guards ───────────────────────────────────────────────────────────────
@@ -919,6 +1065,9 @@ export default function AuditPage() {
                   <DollarInput label="Balance" value={form.carLoanBalance} onChange={v => set('carLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.carLoanRate} onChange={v => set('carLoanRate', v)} placeholder="6.5" />
                   <DollarInput label="Minimum monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
+                  <DollarInput label="Original loan amount (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.carLoanOriginalBalance} onChange={v => set('carLoanOriginalBalance', v)} />
                 </div>
               )}
               {form.hasStudentLoan && (
@@ -927,6 +1076,9 @@ export default function AuditPage() {
                   <DollarInput label="Total balance" value={form.studentLoanBalance} onChange={v => set('studentLoanBalance', v)} />
                   <SuffixInput label="Average interest rate" suffix="% APR" value={form.studentLoanRate} onChange={v => set('studentLoanRate', v)} placeholder="6.0" />
                   <DollarInput label="Minimum monthly payment" value={form.studentLoanPayment} onChange={v => set('studentLoanPayment', v)} />
+                  <DollarInput label="Original loan amount (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.studentLoanOriginalBalance} onChange={v => set('studentLoanOriginalBalance', v)} />
                 </div>
               )}
               {form.hasPersonalLoan && (
@@ -935,6 +1087,9 @@ export default function AuditPage() {
                   <DollarInput label="Balance" value={form.personalLoanBalance} onChange={v => set('personalLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.personalLoanRate} onChange={v => set('personalLoanRate', v)} placeholder="9.0" />
                   <DollarInput label="Minimum monthly payment" value={form.personalLoanPayment} onChange={v => set('personalLoanPayment', v)} />
+                  <DollarInput label="Original loan amount (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.personalLoanOriginalBalance} onChange={v => set('personalLoanOriginalBalance', v)} />
                 </div>
               )}
               {form.hasCreditCard && (
@@ -943,6 +1098,9 @@ export default function AuditPage() {
                   <DollarInput label="Total balance across all cards" value={form.creditCardBalance} onChange={v => set('creditCardBalance', v)} />
                   <SuffixInput label="Average interest rate" suffix="% APR" value={form.creditCardRate} onChange={v => set('creditCardRate', v)} placeholder="22" />
                   <DollarInput label="Minimum monthly payment" value={form.creditCardPayment} onChange={v => set('creditCardPayment', v)} />
+                  <DollarInput label="Original balance (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.creditCardOriginalBalance} onChange={v => set('creditCardOriginalBalance', v)} />
                 </div>
               )}
               {form.hasBusinessLoan && (
@@ -951,6 +1109,9 @@ export default function AuditPage() {
                   <DollarInput label="Balance" value={form.businessLoanBalance} onChange={v => set('businessLoanBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.businessLoanRate} onChange={v => set('businessLoanRate', v)} placeholder="7.0" />
                   <DollarInput label="Minimum monthly payment" value={form.businessLoanPayment} onChange={v => set('businessLoanPayment', v)} />
+                  <DollarInput label="Original loan amount (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.businessLoanOriginalBalance} onChange={v => set('businessLoanOriginalBalance', v)} />
                 </div>
               )}
               {form.hasOtherDebt && (
@@ -962,6 +1123,9 @@ export default function AuditPage() {
                   <DollarInput label="Balance" value={form.otherDebtBalance} onChange={v => set('otherDebtBalance', v)} />
                   <SuffixInput label="Interest rate" suffix="% APR" value={form.otherDebtRate} onChange={v => set('otherDebtRate', v)} placeholder="8.0" />
                   <DollarInput label="Minimum monthly payment" value={form.otherDebtPayment} onChange={v => set('otherDebtPayment', v)} />
+                  <DollarInput label="Original loan amount (if different from current balance)"
+                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                    value={form.otherDebtOriginalBalance} onChange={v => set('otherDebtOriginalBalance', v)} />
                 </div>
               )}
             </>)}

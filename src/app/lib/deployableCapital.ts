@@ -30,7 +30,12 @@ function sum(amounts: number[]): number {
  */
 const BONUS_WITHHOLDING_RATE = 0.3458;
 
-function estimateNetBonus(grossAmount: number): number {
+/**
+ * Exported so any other caller needing a net-of-withholding estimate from a gross
+ * bonus amount (e.g. applying an unlogged-net bonus payment toward debt) reuses this
+ * exact rate instead of re-declaring the constant elsewhere and risking drift.
+ */
+export function estimateNetBonus(grossAmount: number): number {
   return grossAmount * (1 - BONUS_WITHHOLDING_RATE);
 }
 
