@@ -59,7 +59,9 @@ function Skeleton() {
 // ─── Phase card ───────────────────────────────────────────────────────────────
 
 function PhaseCard({ phase }: { phase: Phase }) {
+  const [expanded, setExpanded] = useState(false);
   const top3 = phase.actions.slice(0, 3);
+  const rest = phase.actions.slice(3);
   const totalValue = phase.actions.reduce((s, a) => s + (a.annualValue ?? 0), 0);
   const statusColors: Record<string, string> = {
     active:  'bg-emerald-100 text-emerald-700',
@@ -91,8 +93,17 @@ function PhaseCard({ phase }: { phase: Phase }) {
         {top3.map((action, i) => (
           <ActionRow key={i} action={action} />
         ))}
-        {phase.actions.length > 3 && (
-          <p className="text-xs text-gray-400 pl-5">+{phase.actions.length - 3} more actions</p>
+        {expanded && rest.map((action, i) => (
+          <ActionRow key={i + 3} action={action} />
+        ))}
+        {rest.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            className="text-xs text-gray-400 pl-5 hover:text-gray-600"
+          >
+            {expanded ? 'Show less' : `+${rest.length} more actions`}
+          </button>
         )}
       </div>
     </div>
