@@ -4,7 +4,7 @@ import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 
 // ─── DB row type ─────────────────────────────────────────────────────────────
 
-interface SnapshotRow {
+export interface SnapshotRow {
   id: string;
   user_id: string;
   snapshot_date: string;
@@ -168,7 +168,7 @@ function toRow(
   };
 }
 
-function fromRow(row: SnapshotRow): FinancialSnapshot {
+export function fromRow(row: SnapshotRow): FinancialSnapshot {
   const primaryResidenceValue = Number(row.primary_residence_value ?? 0);
   const mortgageBalance       = Number(row.mortgage_balance ?? 0);
   return {

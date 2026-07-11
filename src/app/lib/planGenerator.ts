@@ -90,6 +90,16 @@ export interface GeneratedPlan {
   assetRoadmap: AssetRoadmapRow[];
   deployableCapitalPerYear: number;
   aiNarrative: null;
+  /**
+   * Optional because most GeneratedPlan objects (e.g. reconstructed from a saved
+   * generated_plans row, which doesn't store this) have no debt-payoff simulation to
+   * report. null means "not applicable" (not a debt-payoff phase, or no active debts) —
+   * distinct from omission, which just means the caller didn't compute/store it.
+   */
+  debtPayoff?: {
+    debtFreeYear: number;       // calendar year the debt simulation projects payoff
+    totalStartingDebt: number;
+  } | null;
 }
 
 // ─── Income assumptions (optional overrides) ─────────────────────────────────
@@ -788,6 +798,9 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
     assetRoadmap: roadmap,
     deployableCapitalPerYear,
     aiNarrative: null,
+    debtPayoff: debtSimulation
+      ? { debtFreeYear: currentYear + debtSimulation.yearsToPayoff, totalStartingDebt: debtSimulation.totalStartingDebt }
+      : null,
   };
 }
 

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generatePlan } from '@/app/lib/planGenerator';
+import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
@@ -139,6 +140,7 @@ export default function AssumptionsPage() {
   const [digitalPeakLever, setDigitalPeakLever]         = useState(5_000);
   const [firstRentalDelayYears, setFirstRentalDelayYears] = useState(0);
   const [bonusGrowthPct, setBonusGrowthPct]             = useState(0); // 0–20 integer percent
+  const [discretionaryCutLever, setDiscretionaryCutLever] = useState(0); // $/mo reduction, preview only
 
   // Live recalculation
   const [livePlan, setLivePlan] = useState<GeneratedPlan | null>(null);
@@ -279,16 +281,19 @@ export default function AssumptionsPage() {
       const defaultDelay = firstRentalRow ? Math.max(0, firstRentalRow.year - 1) : 0;
       setFirstRentalDelayYears(defaultDelay);
 
-      // Pre-fill income projections from saved assumptions, or defaults
-      const biz12  = savedAssumptions ? Number(savedAssumptions.business_monthly_12) : snapshotResult.businessRevenue / 12;
-      const biz36  = savedAssumptions ? Number(savedAssumptions.business_monthly_36) : (snapshotResult.businessRevenue / 12) * 2;
-      const sp12   = savedAssumptions ? Number(savedAssumptions.spouse_business_monthly_12) : 500;
-      const sp36   = savedAssumptions ? Number(savedAssumptions.spouse_business_monthly_36) : 1_500;
-      const dig12  = savedAssumptions ? Number(savedAssumptions.digital_products_monthly_12) : 1_000;
-      const dig36  = savedAssumptions ? Number(savedAssumptions.digital_products_monthly_36) : 5_000;
-      const peak       = savedAssumptions ? Number(savedAssumptions.digital_products_peak) : 5_000;
-      const delay      = savedAssumptions ? Number(savedAssumptions.first_rental_delay_years) : defaultDelay;
-      const bonusPct   = savedAssumptions ? Math.round(Number(savedAssumptions.bonus_growth_rate) * 100) : 0;
+      // Pre-fill income projections from saved assumptions, or defaults — each field
+      // checks its own column for null, not just whether the row exists, since a row
+      // can have some columns set and others null (e.g. seeded outside this page's own
+      // handleSave, which always writes every field together).
+      const biz12  = savedAssumptions?.business_monthly_12 != null ? Number(savedAssumptions.business_monthly_12) : snapshotResult.businessRevenue / 12;
+      const biz36  = savedAssumptions?.business_monthly_36 != null ? Number(savedAssumptions.business_monthly_36) : (snapshotResult.businessRevenue / 12) * 2;
+      const sp12   = savedAssumptions?.spouse_business_monthly_12 != null ? Number(savedAssumptions.spouse_business_monthly_12) : 500;
+      const sp36   = savedAssumptions?.spouse_business_monthly_36 != null ? Number(savedAssumptions.spouse_business_monthly_36) : 1_500;
+      const dig12  = savedAssumptions?.digital_products_monthly_12 != null ? Number(savedAssumptions.digital_products_monthly_12) : 1_000;
+      const dig36  = savedAssumptions?.digital_products_monthly_36 != null ? Number(savedAssumptions.digital_products_monthly_36) : 5_000;
+      const peak       = savedAssumptions?.digital_products_peak != null ? Number(savedAssumptions.digital_products_peak) : 5_000;
+      const delay      = savedAssumptions?.first_rental_delay_years != null ? Number(savedAssumptions.first_rental_delay_years) : defaultDelay;
+      const bonusPct   = savedAssumptions?.bonus_growth_rate != null ? Math.round(Number(savedAssumptions.bonus_growth_rate) * 100) : 0;
 
       setBizMonthly12(Math.round(biz12));
       setBizMonthly36(Math.round(biz36));
@@ -310,6 +315,20 @@ export default function AssumptionsPage() {
   // ── Live recalculation ──────────────────────────────────────────────────
   const runLiveCalc = useCallback(() => {
     if (!snapshot || !profile || !constraints) return;
+
+    // Discretionary-spend-cut lever: freed-up cash is computed via the real
+    // computeMonthlyDeployable formula (reduced discretionary spend in a cloned
+    // snapshot, never persisted) and added on top of capitalPerYearLever — the two
+    // levers move independently and stack additively, same as every other lever pair
+    // on this page.
+    const reducedSnapshot: FinancialSnapshot = {
+      ...snapshot,
+      discretionaryMonthlySpend: Math.max(0, snapshot.discretionaryMonthlySpend - discretionaryCutLever),
+      monthlySpend: snapshot.monthlySpend - Math.min(discretionaryCutLever, snapshot.discretionaryMonthlySpend),
+    };
+    const freedCapitalPerYear =
+      (computeMonthlyDeployable(reducedSnapshot) - computeMonthlyDeployable(snapshot)) * 12;
+
     const inputs: PlanInputs = {
       freedomProfile: { visionText: profile.visionText, targetFreeAge: profile.targetFreeAge, freedomType: profile.freedomType },
       freedomNumber: {
@@ -320,7 +339,7 @@ export default function AssumptionsPage() {
       snapshot,
       assetPreferences: assetPrefs,
       constraints: {
-        capitalPerYear:  capitalPerYearLever,
+        capitalPerYear:  capitalPerYearLever + freedCapitalPerYear,
         hoursPerWeek:    constraints.hoursPerWeek,
         riskTolerance:   constraints.riskTolerance,
         hardConstraints: constraints.hardConstraints,
@@ -343,7 +362,7 @@ export default function AssumptionsPage() {
   }, [
     snapshot, profile, constraints, assetPrefs,
     capitalPerYearLever, freedomNumberLever, digitalPeakLever, firstRentalDelayYears,
-    bonusGrowthPct,
+    bonusGrowthPct, discretionaryCutLever,
     bizMonthly12, bizMonthly36, spouseMonthly12, spouseMonthly36,
     digitalMonthly12, digitalMonthly36,
     financialPhase, debts,
@@ -419,6 +438,12 @@ export default function AssumptionsPage() {
   const defaultYear = defaultPlan?.freedomGap.projectedFreedomYear ?? null;
   const liveYear    = livePlan?.freedomGap.projectedFreedomYear ?? null;
   const yearDelta   = (defaultYear && liveYear) ? defaultYear - liveYear : null;
+
+  const defaultDebtFreeYear = defaultPlan?.debtPayoff?.debtFreeYear ?? null;
+  const liveDebtFreeYear    = livePlan?.debtPayoff?.debtFreeYear ?? null;
+  const debtFreeYearDelta   = (defaultDebtFreeYear && liveDebtFreeYear) ? defaultDebtFreeYear - liveDebtFreeYear : null;
+
+  const maxDiscretionaryCut = Math.max(0, Math.round(snapshot?.discretionaryMonthlySpend ?? 0));
 
   const rentalDelayOptions = [
     { value: 0, label: 'This year' },
@@ -685,6 +710,39 @@ export default function AssumptionsPage() {
               )}
             </div>
 
+            {/* Lever 6 — Reduce discretionary spending */}
+            {maxDiscretionaryCut > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Reduce discretionary spending by</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Current discretionary spend: {fmt(snapshot?.discretionaryMonthlySpend ?? 0)}/mo
+                  </p>
+                  <p className="text-2xl font-extrabold text-emerald-700 tabular-nums mt-1">
+                    {fmt(discretionaryCutLever)}/month
+                  </p>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxDiscretionaryCut}
+                  step={50}
+                  value={discretionaryCutLever}
+                  onChange={e => { setDiscretionaryCutLever(Number(e.target.value)); touch('discretionary'); }}
+                  className="w-full accent-emerald-600"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400 font-medium">
+                  <span>$0</span>
+                  <span>{fmt(maxDiscretionaryCut)}/mo</span>
+                </div>
+                {touched.has('discretionary') && discretionaryCutLever > 0 && (
+                  <p className="text-xs text-gray-500 leading-relaxed pt-1 border-t border-gray-50">
+                    Cutting {fmt(discretionaryCutLever)}/month in discretionary spend frees up {fmt(discretionaryCutLever * 12)}/yr in deployable capital — this is a preview only and won&apos;t change your saved snapshot unless you update it directly in your financial snapshot.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Live comparison card */}
             <div className={`rounded-2xl border p-5 space-y-4 transition-all ${
               livePlan ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-100'
@@ -712,6 +770,30 @@ export default function AssumptionsPage() {
                   )}
                 </div>
               </div>
+              {(defaultDebtFreeYear || liveDebtFreeYear) && (
+                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-emerald-100">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Debt-free (without adjustments)</p>
+                    <p className="text-xl font-extrabold text-gray-300 tabular-nums leading-none">
+                      {defaultDebtFreeYear ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Debt-free (with adjustments)</p>
+                    <p className="text-xl font-extrabold text-emerald-700 tabular-nums leading-none">
+                      {liveDebtFreeYear ?? '—'}
+                    </p>
+                    {debtFreeYearDelta !== null && debtFreeYearDelta !== 0 && (
+                      <p className={`text-xs font-semibold mt-1 ${debtFreeYearDelta > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {Math.abs(debtFreeYearDelta)} year{Math.abs(debtFreeYearDelta) !== 1 ? 's' : ''} {debtFreeYearDelta > 0 ? 'earlier' : 'later'}
+                      </p>
+                    )}
+                    {debtFreeYearDelta === 0 && liveDebtFreeYear && (
+                      <p className="text-xs text-gray-400 mt-1">Same as default</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

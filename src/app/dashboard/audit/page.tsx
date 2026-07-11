@@ -6,6 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { saveSnapshot, getLatestSnapshot } from '@/app/lib/snapshots';
 import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
 import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
+import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -575,6 +576,15 @@ export default function AuditPage() {
           await syncFinancialPhase(getBrowserSupabaseClient(), session.user.id);
         } catch (err) {
           console.warn('syncFinancialPhase failed:', err instanceof Error ? err.message : err);
+        }
+
+        // Recompute capital_per_year from the snapshot just saved above — previously
+        // this only refreshed when the user manually revisited phase2, so it could go
+        // stale relative to Audit changes. Same never-block-the-save treatment.
+        try {
+          await syncCapitalPerYear(getBrowserSupabaseClient(), session.user.id);
+        } catch (err) {
+          console.warn('syncCapitalPerYear failed:', err instanceof Error ? err.message : err);
         }
       }
 
