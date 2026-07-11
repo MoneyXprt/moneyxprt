@@ -12,6 +12,8 @@ import type { GeneratedPlan, IncomeAssumptions, PlanInputs } from '@/app/lib/pla
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Milestone } from '@/app/lib/milestoneCalculator';
 import type { Session } from '@supabase/supabase-js';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
+import type { SimulatableDebt } from '@/app/lib/debtPayoff';
 
 // ─── Row types ────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,8 @@ function buildInputs(
   assetPrefs: string[],
   constraints: ConstraintsRow,
   levers: Levers,
+  financialPhase: FinancialPhase | null,
+  debts: SimulatableDebt[],
 ): PlanInputs {
   const prefs = levers.firstRentalYear === null
     ? assetPrefs.filter(p => p !== 'long_term_rental')
@@ -101,6 +105,8 @@ function buildInputs(
       riskTolerance:   constraints.risk_tolerance,
       hardConstraints: (constraints.hard_constraints as string[]) ?? [],
     },
+    financialPhase,
+    debts,
   };
 }
 
@@ -375,6 +381,8 @@ export default function TimelinePage() {
   const [assetPrefs, setAssetPrefs]     = useState<string[]>([]);
   const [execRows, setExecRows]         = useState<ExecRow[]>([]);
   const [hasAssumptions, setHasAssumptions] = useState(false);
+  const [financialPhase, setFinancialPhase] = useState<FinancialPhase | null>(null);
+  const [debts, setDebts]               = useState<SimulatableDebt[]>([]);
 
   // Live / recalculated
   const [milestones, setMilestones]     = useState<Milestone[]>([]);
@@ -421,6 +429,8 @@ export default function TimelinePage() {
         { data: assumptionsRow },
         { data: planRow },
         { data: actionRows },
+        { data: phaseRow },
+        { data: debtRows },
       ] = await Promise.all([
         sb.from('freedom_profiles')
           .select('freedom_number_monthly, vision_text, target_free_age, freedom_type')
@@ -440,9 +450,25 @@ export default function TimelinePage() {
         sb.from('execution_actions')
           .select('id, title, category, completed, sort_order')
           .eq('user_id', userId).order('sort_order'),
+        sb.from('financial_phase_status')
+          .select('phase').eq('user_id', userId).maybeSingle(),
+        sb.from('debts')
+          .select('id, name, current_balance, interest_rate, is_active')
+          .eq('user_id', userId).eq('is_active', true),
       ]);
 
       const snap = await getLatestSnapshot();
+
+      const fetchedPhase = (phaseRow?.phase as FinancialPhase | undefined) ?? null;
+      const fetchedDebts: SimulatableDebt[] = (debtRows ?? []).map(d => ({
+        id:            d.id,
+        name:          d.name,
+        currentBalance: Number(d.current_balance),
+        interestRate:  Number(d.interest_rate),
+        isActive:      d.is_active,
+      }));
+      setFinancialPhase(fetchedPhase);
+      setDebts(fetchedDebts);
 
       if (!planRow) { setNoPlan(true); setLoading(false); return; }
 
@@ -498,7 +524,7 @@ export default function TimelinePage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       try {
-        const inputs      = buildInputs(profile, snapshot, assetPrefs, constraints, levers);
+        const inputs      = buildInputs(profile, snapshot, assetPrefs, constraints, levers, financialPhase, debts);
         const incomeAsmp  = buildIncomeAssumptions(assumptions, levers, currentYear);
         const newPlan     = generatePlan(inputs, incomeAsmp);
         const completedTitles = execRows.filter(r => r.completed).map(r => r.title);

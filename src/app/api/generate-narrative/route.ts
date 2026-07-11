@@ -23,7 +23,8 @@ function buildUserPrompt(body: NarrativeRequest): string {
   const {
     freedomVision, freedomNumber, currentPassiveIncome, gapMonthly,
     projectedFreedomYear, deployableCapitalPerYear, taxStrategyAnnualValue,
-    phases, assetRoadmap, freedomType, targetFreeAge,
+    phases, assetRoadmap, freedomType, targetFreeAge, totalActiveDebt,
+    projectedTaxStrategyAnnualValue,
   } = body;
 
   const freedomTypeLabel =
@@ -52,13 +53,30 @@ KEY NUMBERS:
 - Monthly gap to close: $${Math.round(gapMonthly).toLocaleString()}/mo
 - Projected year of freedom: ${projectedFreedomYear}
 - Deployable capital per year (after tax savings): $${Math.round(deployableCapitalPerYear).toLocaleString()}
-- Annual tax savings identified: $${Math.round(taxStrategyAnnualValue).toLocaleString()}
+- Annual CASH tax savings identified (real dollars redirected to deployable capital this year): $${Math.round(taxStrategyAnnualValue).toLocaleString()}${
+    projectedTaxStrategyAnnualValue && projectedTaxStrategyAnnualValue > 0
+      ? `\n- Projected long-term value from tax-advantaged strategies (e.g. Backdoor Roth — NOT cash-in-hand this year, it's future tax-free growth): $${Math.round(projectedTaxStrategyAnnualValue).toLocaleString()}/yr`
+      : ''
+  }${
+    totalActiveDebt && totalActiveDebt > 0
+      ? `\n- Total current debt balance (today, across all active debts): $${Math.round(totalActiveDebt).toLocaleString()}`
+      : ''
+  }
 
 PLAN PHASES:
 ${topPhases}
 
 FIRST 5 YEARS OF ASSET ROADMAP:
 ${roadmapSummary}
+${
+  totalActiveDebt && totalActiveDebt > 0
+    ? `\nNote: the roadmap lines above show the debt balance REMAINING after each year's paydown — they are NOT the current total. The current total debt balance today is the "$${Math.round(totalActiveDebt).toLocaleString()}" figure in KEY NUMBERS. Never state a "remaining" figure from the roadmap as if it were the current total debt.`
+    : ''
+}${
+  projectedTaxStrategyAnnualValue && projectedTaxStrategyAnnualValue > 0
+    ? `\nNote: cash tax savings and projected long-term value are NOT the same thing and must not be combined into one number or described interchangeably. Cash tax savings are real dollars available this year to redirect toward assets. Projected long-term value (e.g. Backdoor Roth) is future tax-free growth, not cash available now. If you mention both, name them separately — e.g. "$X in cash tax savings this year, plus $Y in projected long-term value from tax-advantaged accounts" — never state a single flat "$Z in tax savings" figure that blends the two.`
+    : ''
+}
 
 Write exactly 3 paragraphs. No headers, no bullets, no lists.
 Paragraph 1: Their current situation — what the numbers actually mean and what the gap represents in real terms.
@@ -79,6 +97,8 @@ interface NarrativeRequest {
   assetRoadmap: { year: number; calendarYear: number; action: string; cumulativeMonthlyIncome: number }[];
   freedomType: string;
   targetFreeAge: number;
+  totalActiveDebt?: number;
+  projectedTaxStrategyAnnualValue?: number;
 }
 
 export async function POST(req: NextRequest) {

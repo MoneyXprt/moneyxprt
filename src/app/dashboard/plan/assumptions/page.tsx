@@ -8,6 +8,8 @@ import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generatePlan } from '@/app/lib/planGenerator';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
+import type { SimulatableDebt } from '@/app/lib/debtPayoff';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -120,6 +122,8 @@ export default function AssumptionsPage() {
   const [profile, setProfile]           = useState<ProfileData | null>(null);
   const [constraints, setConstraints]   = useState<ConstraintsData | null>(null);
   const [defaultPlan, setDefaultPlan]   = useState<GeneratedPlan | null>(null);
+  const [financialPhase, setFinancialPhase] = useState<FinancialPhase | null>(null);
+  const [debts, setDebts]               = useState<SimulatableDebt[]>([]);
 
   // Section 1 — Income projections
   const [bizMonthly12, setBizMonthly12]         = useState(0);
@@ -171,6 +175,8 @@ export default function AssumptionsPage() {
         { data: assetRows },
         { data: constraintsRow },
         { data: savedAssumptions },
+        { data: phaseRow },
+        { data: debtRows },
       ] = await Promise.all([
         sb.from('freedom_profiles')
           .select('vision_text,target_free_age,freedom_type,freedom_number_monthly,portfolio_target,housing,health_insurance,food,transportation,travel,kids,savings_buffer,misc')
@@ -190,7 +196,26 @@ export default function AssumptionsPage() {
           .select('*')
           .eq('user_id', uid)
           .maybeSingle(),
+        sb.from('financial_phase_status')
+          .select('phase')
+          .eq('user_id', uid)
+          .maybeSingle(),
+        sb.from('debts')
+          .select('id, name, current_balance, interest_rate, is_active')
+          .eq('user_id', uid)
+          .eq('is_active', true),
       ]);
+
+      const fetchedPhase = (phaseRow?.phase as FinancialPhase | undefined) ?? null;
+      const fetchedDebts: SimulatableDebt[] = (debtRows ?? []).map(d => ({
+        id:            d.id,
+        name:          d.name,
+        currentBalance: Number(d.current_balance),
+        interestRate:  Number(d.interest_rate),
+        isActive:      d.is_active,
+      }));
+      setFinancialPhase(fetchedPhase);
+      setDebts(fetchedDebts);
 
       const snapshotResult = await getLatestSnapshot();
 
@@ -236,6 +261,8 @@ export default function AssumptionsPage() {
         snapshot: snapshotResult,
         assetPreferences: prefs,
         constraints: { capitalPerYear: c.capitalPerYear, hoursPerWeek: c.hoursPerWeek, riskTolerance: c.riskTolerance, hardConstraints: c.hardConstraints },
+        financialPhase: fetchedPhase,
+        debts: fetchedDebts,
       });
       setDefaultPlan(defaultPlanResult);
 
@@ -298,6 +325,8 @@ export default function AssumptionsPage() {
         riskTolerance:   constraints.riskTolerance,
         hardConstraints: constraints.hardConstraints,
       },
+      financialPhase,
+      debts,
     };
     const assumptions: IncomeAssumptions = {
       businessMonthly12:         bizMonthly12,
@@ -317,6 +346,7 @@ export default function AssumptionsPage() {
     bonusGrowthPct,
     bizMonthly12, bizMonthly36, spouseMonthly12, spouseMonthly36,
     digitalMonthly12, digitalMonthly36,
+    financialPhase, debts,
   ]);
 
   useEffect(() => {

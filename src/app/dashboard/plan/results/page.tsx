@@ -9,6 +9,8 @@ import { generatePlan, savePlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
+import type { SimulatableDebt } from '@/app/lib/debtPayoff';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -463,6 +465,8 @@ export default function PlanResultsPage() {
         { data: constraintsRow },
         { data: prevPlanRow },
         { data: bonusPlanRow },
+        { data: phaseRow },
+        { data: debtRows },
       ] = await Promise.all([
         sb.from('freedom_profiles')
           .select('vision_text, target_free_age, freedom_type, freedom_number_monthly, portfolio_target, housing, health_insurance, food, transportation, travel, kids, savings_buffer, misc')
@@ -480,7 +484,7 @@ export default function PlanResultsPage() {
           .maybeSingle(),
         // Fetch the current plan before we overwrite it — used for the "what changed" diff + narrative reuse
         sb.from('generated_plans')
-          .select('freedom_gap, deployable_capital_per_year, tax_strategy_stack, ai_narrative')
+          .select('freedom_gap, deployable_capital_per_year, tax_strategy_stack, ai_narrative, ai_narrative_debt_total, ai_narrative_projected_tax_total')
           .eq('user_id', userId)
           .eq('is_current', true)
           .order('created_at', { ascending: false })
@@ -490,6 +494,14 @@ export default function PlanResultsPage() {
           .select('frequency, plan_amount, payment_month')
           .eq('user_id', userId)
           .maybeSingle(),
+        sb.from('financial_phase_status')
+          .select('phase')
+          .eq('user_id', userId)
+          .maybeSingle(),
+        sb.from('debts')
+          .select('id, name, current_balance, interest_rate, is_active')
+          .eq('user_id', userId)
+          .eq('is_active', true),
       ]);
 
       const bonusPlan: BonusPlan | null = bonusPlanRow ? {
@@ -497,6 +509,15 @@ export default function PlanResultsPage() {
         planAmount:   Number(bonusPlanRow.plan_amount),
         paymentMonth: bonusPlanRow.payment_month,
       } : null;
+
+      const financialPhase = (phaseRow?.phase as FinancialPhase | undefined) ?? null;
+      const debts: SimulatableDebt[] = (debtRows ?? []).map(d => ({
+        id:            d.id,
+        name:          d.name,
+        currentBalance: Number(d.current_balance),
+        interestRate:  Number(d.interest_rate),
+        isActive:      d.is_active,
+      }));
 
       console.log('[plan/results] assetRows:', assetRows, 'error:', assetError?.message);
 
@@ -548,6 +569,8 @@ export default function PlanResultsPage() {
           riskTolerance:   constraintsRow!.risk_tolerance as string,
           hardConstraints: (constraintsRow!.hard_constraints as string[]) ?? [],
         },
+        financialPhase,
+        debts,
       };
 
       // Capture previous plan for diff before savePlan retires it
@@ -580,8 +603,14 @@ export default function PlanResultsPage() {
         localStorage.setItem('milestone_shown_15', '1');
       }
 
-      // Save plan async — don't block rendering
-      savePlan(generated, userId).catch(e => console.warn('savePlan failed:', e));
+      // Save plan — awaited so we have the inserted row's id to target the later
+      // narrative-persistence update (rendering already happened via setPlan above).
+      let planId: string | null = null;
+      try {
+        planId = await savePlan(generated, userId);
+      } catch (e) {
+        console.warn('savePlan failed:', e);
+      }
 
       // Regenerate execution actions — once per page mount, not on every render
       if (!actionsSaved.current) {
@@ -594,13 +623,23 @@ export default function PlanResultsPage() {
       const savedNarrative    = (prevPlanRow as { ai_narrative?: string | null } | null)?.ai_narrative ?? null;
       const savedFreedomYear  = (prevPlanRow?.freedom_gap as { projectedFreedomYear?: number } | null)?.projectedFreedomYear;
       const savedCapital      = Number(prevPlanRow?.deployable_capital_per_year ?? 0);
+      const savedDebtTotal    = (prevPlanRow as { ai_narrative_debt_total?: number | null } | null)?.ai_narrative_debt_total ?? null;
+      const savedProjectedTaxTotal = (prevPlanRow as { ai_narrative_projected_tax_total?: number | null } | null)?.ai_narrative_projected_tax_total ?? null;
       const newFreedomYear    = generated.freedomGap.projectedFreedomYear;
       const newCapital        = generated.deployableCapitalPerYear;
+      const newDebtTotal      = debts.reduce((sum, d) => sum + d.currentBalance, 0);
+      const newProjectedTaxTotal = generated.taxStrategyStack.strategies
+        .filter(r => r.valueType === 'projected')
+        .reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
 
       const needsNewNarrative =
         !savedNarrative ||
         savedFreedomYear !== newFreedomYear ||
-        Math.abs(newCapital - savedCapital) > 1000;
+        Math.abs(newCapital - savedCapital) > 1000 ||
+        savedDebtTotal === null ||
+        Math.abs(newDebtTotal - savedDebtTotal) > 500 ||
+        savedProjectedTaxTotal === null ||
+        Math.abs(newProjectedTaxTotal - savedProjectedTaxTotal) > 50;
 
       if (!needsNewNarrative) {
         setNarrative(savedNarrative);
@@ -617,14 +656,24 @@ export default function PlanResultsPage() {
             projectedFreedomYear:     newFreedomYear,
             deployableCapitalPerYear: newCapital,
             taxStrategyAnnualValue:   generated.taxStrategyStack.annualValue,
+            projectedTaxStrategyAnnualValue: newProjectedTaxTotal,
             phases:                   generated.phases,
             assetRoadmap:             generated.assetRoadmap.slice(0, 5),
             freedomType:              profileRow!.freedom_type,
             targetFreeAge:            Number(profileRow!.target_free_age),
+            totalActiveDebt:          newDebtTotal,
           }),
         })
           .then(r => r.json())
-          .then(({ narrative: n }: { narrative: string | null }) => setNarrative(n))
+          .then(({ narrative: n }: { narrative: string | null }) => {
+            setNarrative(n);
+            if (n && planId) {
+              sb.from('generated_plans')
+                .update({ ai_narrative: n, ai_narrative_debt_total: newDebtTotal, ai_narrative_projected_tax_total: newProjectedTaxTotal })
+                .eq('id', planId)
+                .then(({ error }) => { if (error) console.warn('persist ai_narrative failed:', error.message); });
+            }
+          })
           .catch(() => setNarrative(null))
           .finally(() => setNarrativeLoading(false));
       }
@@ -883,7 +932,7 @@ export default function PlanResultsPage() {
                     <div key={r.id} className="flex items-center justify-between px-5 py-3">
                       <span className="text-sm text-gray-700">{r.name}</span>
                       <span className="text-sm font-bold text-indigo-600 tabular-nums shrink-0 ml-3">
-                        {fmt(r.estimatedAnnualValue)}/yr
+                        {fmt(r.estimatedAnnualValue)}/yr <span className="text-indigo-400 font-normal">(projected)</span>
                       </span>
                     </div>
                   ))}

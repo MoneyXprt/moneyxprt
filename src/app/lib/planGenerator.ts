@@ -7,7 +7,9 @@
  */
 
 import { evaluateAll } from '@/app/lib/strategies';
+import { simulateDebtSnowballPayoff, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
 
 // ─── Input / output types ─────────────────────────────────────────────────────
 
@@ -30,6 +32,17 @@ export interface PlanInputs {
     riskTolerance: string;
     hardConstraints: string[];  // array of constraint keys
   };
+  /**
+   * Both optional and default to "no debt-payoff gating" (current behavior) when
+   * omitted — existing callers don't need to change until they're deliberately
+   * wired up to pass real data. When financialPhase is 'funding_mini_ef' or
+   * 'paying_debt' and debts has active entries, the asset roadmap redirects
+   * deployable capital to debt payoff first (see simulateDebtSnowballPayoff) and
+   * delays capital-asset acquisition/index investing until debts are projected to
+   * clear.
+   */
+  financialPhase?: FinancialPhase | null;
+  debts?: SimulatableDebt[];
 }
 
 export type PhaseStatus = 'active' | 'pending';
@@ -186,7 +199,7 @@ function fmt(n: number): string {
 // ─── Core generator ───────────────────────────────────────────────────────────
 
 export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssumptions): GeneratedPlan {
-  const { freedomNumber, snapshot, assetPreferences, constraints } = inputs;
+  const { freedomNumber, snapshot, assetPreferences, constraints, financialPhase, debts } = inputs;
   const { hardConstraints } = constraints;
   const currentYear = new Date().getFullYear();
 
@@ -287,7 +300,9 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   const p2Actions: PlanAction[] = activeStrategies
     .sort((a, b) => b.estimatedAnnualValue - a.estimatedAnnualValue)
     .map(r => ({
-      text: `${r.name} — ${fmt(r.estimatedAnnualValue)}/yr tax savings`,
+      text: r.valueType === 'cash'
+        ? `${r.name} — ${fmt(r.estimatedAnnualValue)}/yr tax savings`
+        : `${r.name} — ${fmt(r.estimatedAnnualValue)}/yr (projected long-term value)`,
       priority: actionPriority(r.estimatedAnnualValue),
       annualValue: r.estimatedAnnualValue,
     }));
@@ -400,6 +415,26 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
     launchYear: number; growthCount: number; currentIncome: number; cfg: AssetConfig;
   }>();
 
+  // ── Debt-payoff-first gating ──────────────────────────────────────────────
+  // If the user is still in a debt/mini-EF phase, redirect deployable capital to
+  // clearing debt before any capital-asset acquisition or index investing — see
+  // simulateDebtSnowballPayoff's doc comment for the simplifications involved.
+  // debtFreeYear stays 0 (no gating) when financialPhase wasn't provided, isn't a
+  // debt-payoff phase, or there are no active debts to pay off.
+  const isDebtPayoffPhase = financialPhase === 'funding_mini_ef' || financialPhase === 'paying_debt';
+  const debtSimulation = isDebtPayoffPhase && debts && debts.length > 0
+    ? simulateDebtSnowballPayoff(debts, deployableCapitalPerYear)
+    : null;
+  const debtFreeYear = debtSimulation ? debtSimulation.yearsToPayoff : 0;
+  const debtPayoffEventsByYear = new Map<number, DebtPayoffEvent[]>();
+  if (debtSimulation) {
+    for (const event of debtSimulation.events) {
+      const list = debtPayoffEventsByYear.get(event.year) ?? [];
+      list.push(event);
+      debtPayoffEventsByYear.set(event.year, list);
+    }
+  }
+
   // If already free
   if (gapMonthly <= 0) {
     projectedFreedomYear = currentYear;
@@ -426,7 +461,17 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
         effectiveDeployableCapital += rentalTaxUnlockAnnualValue;
       }
 
-      capitalAccumulated += effectiveDeployableCapital + spouseBoost + bonusBoost;
+      const inDebtPayoffWindow = year <= debtFreeYear;
+      // During the debt-payoff window, deployable capital (plus spouse/bonus boosts)
+      // goes toward debt instead of accumulating toward an asset purchase — see the
+      // debt-payoff row injection below. Not feeding spouseBoost/bonusBoost into the
+      // debt simulation itself is a deliberate simplification: those vary per year
+      // based on incomeAssumptions, while the simulation uses a single flat
+      // deployableCapitalPerYear figure, so actual payoff is likely faster than
+      // projected here, not slower.
+      if (!inDebtPayoffWindow) {
+        capitalAccumulated += effectiveDeployableCapital + spouseBoost + bonusBoost;
+      }
       let yearAcquired = false;
       let capitalAssetAcquiredThisYear = false;  // set in step 3; gates the index sweep in step 4
 
@@ -566,46 +611,81 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
         break;
       }
 
-      // ── 3. Acquire capital assets while funds allow ───────────────────────
-      const rentalDelayYears = incomeAssumptions?.firstRentalDelayYears ?? 0;
-      let acquired = true;
-      while (acquired && capitalAssets.length > 0) {
-        acquired = false;
-        // Advance past any rentals that are still in their delay window
-        let skipped = 0;
-        while (skipped < capitalAssets.length) {
-          const c = capitalAssets[capitalCycleIndex % capitalAssets.length];
-          const isRental = c.id === 'long_term_rental' || c.id === 'short_term_rental';
-          if (isRental && year <= rentalDelayYears) { capitalCycleIndex++; skipped++; }
-          else break;
-        }
-        if (skipped >= capitalAssets.length) break; // all assets are delayed rentals this year
-
-        const cfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
-        if (capitalAccumulated >= cfg.downPayment) {
-          capitalAccumulated -= cfg.downPayment;
-          const income = getMonthlyIncome(cfg, cfg.downPayment);
-          cumulativeMonthlyIncome += income;
+      // ── 2.5. Debt payoff — redirects deployable capital during the debt-payoff
+      // window instead of letting any capital-asset acquisition or index sweep run.
+      if (inDebtPayoffWindow) {
+        const eventsThisYear = debtPayoffEventsByYear.get(year) ?? [];
+        for (const event of eventsThisYear) {
           roadmap.push({
             year,
             calendarYear: currentYear + year,
-            action: `Acquire ${cfg.title}`,
-            assetType: cfg.id,
-            capitalDeployed: cfg.downPayment,
-            estimatedMonthlyIncomeAdded: income,
+            action: `${event.debtName} paid off via debt snowball`,
+            assetType: 'debt_payoff',
+            capitalDeployed: 0,
+            estimatedMonthlyIncomeAdded: 0,
             cumulativeMonthlyIncome,
             remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
           });
-          capitalCycleIndex++;
           yearAcquired = true;
-          acquired = true;
-          capitalAssetAcquiredThisYear = true;
-          // Track first rental acquisition so we can inject the tax unlock the following year
-          if (rentalAcquiredYear < 0 &&
-              (cfg.id === 'long_term_rental' || cfg.id === 'short_term_rental')) {
-            rentalAcquiredYear = year;
+        }
+        if (eventsThisYear.length === 0) {
+          const remainingDebt = debtSimulation?.remainingByYear[year - 1] ?? 0;
+          roadmap.push({
+            year,
+            calendarYear: currentYear + year,
+            action: `Paying down debt via snowball — ${fmt(remainingDebt)} remaining`,
+            assetType: 'debt_payoff',
+            capitalDeployed: 0,
+            estimatedMonthlyIncomeAdded: 0,
+            cumulativeMonthlyIncome,
+            remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+          });
+          yearAcquired = true;
+        }
+      }
+
+      // ── 3. Acquire capital assets while funds allow ───────────────────────
+      if (!inDebtPayoffWindow) {
+        const rentalDelayYears = incomeAssumptions?.firstRentalDelayYears ?? 0;
+        let acquired = true;
+        while (acquired && capitalAssets.length > 0) {
+          acquired = false;
+          // Advance past any rentals that are still in their delay window
+          let skipped = 0;
+          while (skipped < capitalAssets.length) {
+            const c = capitalAssets[capitalCycleIndex % capitalAssets.length];
+            const isRental = c.id === 'long_term_rental' || c.id === 'short_term_rental';
+            if (isRental && year <= rentalDelayYears) { capitalCycleIndex++; skipped++; }
+            else break;
           }
-          if (cumulativeMonthlyIncome >= freedomTarget) break;
+          if (skipped >= capitalAssets.length) break; // all assets are delayed rentals this year
+
+          const cfg = capitalAssets[capitalCycleIndex % capitalAssets.length];
+          if (capitalAccumulated >= cfg.downPayment) {
+            capitalAccumulated -= cfg.downPayment;
+            const income = getMonthlyIncome(cfg, cfg.downPayment);
+            cumulativeMonthlyIncome += income;
+            roadmap.push({
+              year,
+              calendarYear: currentYear + year,
+              action: `Acquire ${cfg.title}`,
+              assetType: cfg.id,
+              capitalDeployed: cfg.downPayment,
+              estimatedMonthlyIncomeAdded: income,
+              cumulativeMonthlyIncome,
+              remainingGap: Math.max(0, freedomTarget - cumulativeMonthlyIncome),
+            });
+            capitalCycleIndex++;
+            yearAcquired = true;
+            acquired = true;
+            capitalAssetAcquiredThisYear = true;
+            // Track first rental acquisition so we can inject the tax unlock the following year
+            if (rentalAcquiredYear < 0 &&
+                (cfg.id === 'long_term_rental' || cfg.id === 'short_term_rental')) {
+              rentalAcquiredYear = year;
+            }
+            if (cumulativeMonthlyIncome >= freedomTarget) break;
+          }
         }
       }
       if (cumulativeMonthlyIncome >= freedomTarget) {
@@ -622,7 +702,7 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
       // accumulates toward the next capital-asset down payment across years.
       // This interleaves rentals and index fund naturally: buy rental → sweep excess
       // to index → save again → buy next rental → sweep excess → repeat.
-      const sweepToIndexThisYear = wantsIndexInvesting && capitalAccumulated > 0 &&
+      const sweepToIndexThisYear = !inDebtPayoffWindow && wantsIndexInvesting && capitalAccumulated > 0 &&
         (capitalAssets.length === 0 || capitalAssetAcquiredThisYear);
 
       if (sweepToIndexThisYear) {
@@ -695,7 +775,7 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
 
 // ─── Persistence layer ────────────────────────────────────────────────────────
 
-export async function savePlan(plan: GeneratedPlan, userId: string): Promise<void> {
+export async function savePlan(plan: GeneratedPlan, userId: string): Promise<string> {
   const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
   const sb = getBrowserSupabaseClient();
 
@@ -708,7 +788,7 @@ export async function savePlan(plan: GeneratedPlan, userId: string): Promise<voi
   await sb.from('generated_plans').update({ is_current: false }).eq('user_id', userId);
 
   // Insert new current plan
-  const { error } = await sb.from('generated_plans').insert({
+  const { data, error } = await sb.from('generated_plans').insert({
     user_id:                     userId,
     is_current:                  true,
     freedom_gap:                 plan.freedomGap,
@@ -718,7 +798,8 @@ export async function savePlan(plan: GeneratedPlan, userId: string): Promise<voi
     deployable_capital_per_year: plan.deployableCapitalPerYear,
     ai_narrative:                null,
     projected_freedom_date:      projectedFreedomDate,
-  });
+  }).select('id').single();
 
   if (error) throw new Error(`savePlan failed: ${error.message}`);
+  return data.id;
 }
