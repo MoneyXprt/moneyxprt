@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { saveSnapshot, getLatestSnapshot } from '@/app/lib/snapshots';
 import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
+import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -565,6 +566,15 @@ export default function AuditPage() {
           await syncDebtsTracker(session.user.id);
         } catch (err) {
           console.warn('syncDebtsTracker failed:', err instanceof Error ? err.message : err);
+        }
+
+        // Recompute financial phase — run after syncDebtsTracker so it reflects any
+        // debts just synced in, plus the emergencyFund just saved above. Same
+        // never-block-the-save treatment as the debt sync.
+        try {
+          await syncFinancialPhase(getBrowserSupabaseClient(), session.user.id);
+        } catch (err) {
+          console.warn('syncFinancialPhase failed:', err instanceof Error ? err.message : err);
         }
       }
 

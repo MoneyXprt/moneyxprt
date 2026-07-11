@@ -6,6 +6,7 @@ import { Tooltip } from '@/components/Tooltip';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { calculateFreedomScore } from '@/app/lib/freedomScore';
 import type { FreedomScoreBreakdown } from '@/app/lib/freedomScore';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -647,6 +648,30 @@ function TaxYearDeadlineBanner({ daysLeft, unimplemented }: { daysLeft: number; 
   );
 }
 
+// ─── Financial phase badge ────────────────────────────────────────────────────
+
+const PHASE_LABELS: Record<FinancialPhase, string> = {
+  funding_mini_ef:  'Funding starter emergency fund',
+  paying_debt:      'Paying down debt',
+  building_full_ef: 'Building full emergency fund',
+  assets_unlocked:  'Assets unlocked',
+};
+
+const PHASE_STYLES: Record<FinancialPhase, string> = {
+  funding_mini_ef:  'bg-amber-100 text-amber-700',
+  paying_debt:      'bg-amber-100 text-amber-700',
+  building_full_ef: 'bg-sky-100 text-sky-700',
+  assets_unlocked:  'bg-emerald-100 text-emerald-700',
+};
+
+function FinancialPhaseBadge({ phase }: { phase: FinancialPhase }) {
+  return (
+    <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${PHASE_STYLES[phase]}`}>
+      {PHASE_LABELS[phase]}
+    </span>
+  );
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton() {
@@ -678,6 +703,7 @@ export default function DashboardHome() {
   const [visionText, setVisionText]             = useState<string | null>(null);
   const [freedomStatement, setFreedomStatement] = useState<string | null>(null);
   const [yearReview, setYearReview]       = useState<YearReviewData | null>(null);
+  const [financialPhase, setFinancialPhase] = useState<FinancialPhase | null>(null);
   const [unimplementedTaxCount, setUnimplementedTaxCount] = useState(0);
   const [freedomScoreBreakdown, setFreedomScoreBreakdown] = useState<FreedomScoreBreakdown | null>(null);
   const [snapshotIncome, setSnapshotIncome] = useState<{ rental: number; dividend: number }>({ rental: 0, dividend: 0 });
@@ -707,6 +733,7 @@ export default function DashboardHome() {
       { data: execRows },
       { data: profileRow },
       { data: assetPrefRow },
+      { data: phaseRow },
     ] = await Promise.all([
       sb.from('generated_plans')
         .select('freedom_gap, phases, tax_strategy_stack, created_at')
@@ -741,7 +768,13 @@ export default function DashboardHome() {
         .eq('user_id', userId)
         .limit(1)
         .maybeSingle(),
+      sb.from('financial_phase_status')
+        .select('phase')
+        .eq('user_id', userId)
+        .maybeSingle(),
     ]);
+
+    setFinancialPhase((phaseRow?.phase as FinancialPhase | undefined) ?? null);
 
     if (planRow) {
       setPlan({
@@ -899,6 +932,9 @@ export default function DashboardHome() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-4">
+
+        {/* Financial phase badge — top of page */}
+        {financialPhase && <FinancialPhaseBadge phase={financialPhase} />}
 
         {/* Tax year deadline alert (Defend Part 4) — top of page */}
         {showDeadlineBanner && (

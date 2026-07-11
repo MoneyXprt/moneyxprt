@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { estimateNetBonus } from '@/app/lib/deployableCapital';
 import { recordDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
+import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Unapplied bonus → debt ─────────────────────────────────────────────────
@@ -211,7 +212,16 @@ export default function ActualsPage() {
         .eq('id', bonus.id);
       if (updateBonusError) throw updateBonusError;
 
-      if (paidOffInfo) setPayoffCelebration(paidOffInfo);
+      if (paidOffInfo) {
+        setPayoffCelebration(paidOffInfo);
+        // Paying off a debt is the only debt-side event that can change hasActiveDebts
+        // (a regular partial payment never does) — recompute here, not on every payment.
+        try {
+          await syncFinancialPhase(sb, userId);
+        } catch (err) {
+          console.warn('syncFinancialPhase failed:', err instanceof Error ? err.message : err);
+        }
+      }
 
       setUnappliedBonuses(prev => prev.filter(b => b.id !== bonus.id));
     } catch (err) {

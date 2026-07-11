@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { recordDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
+import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -245,7 +246,16 @@ export default function DebtsPage() {
       paymentDate: date,
       source: 'regular',
     });
-    if (paidOffInfo) setPayoffCelebration(paidOffInfo);
+    if (paidOffInfo) {
+      setPayoffCelebration(paidOffInfo);
+      // Paying off a debt is the only debt-side event that can change hasActiveDebts
+      // (a regular partial payment never does) — recompute here, not on every payment.
+      try {
+        await syncFinancialPhase(sb, session.user.id);
+      } catch (err) {
+        console.warn('syncFinancialPhase failed:', err instanceof Error ? err.message : err);
+      }
+    }
     await fetchDebts(session.user.id);
   };
 

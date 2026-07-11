@@ -2,6 +2,9 @@ import type { FinancialSnapshot } from './strategies/types';
 
 export type FinancialPhase = 'funding_mini_ef' | 'paying_debt' | 'building_full_ef' | 'assets_unlocked';
 
+/** Only these two fields are ever read — narrowed so callers don't need a full snapshot. */
+export type FinancialPhaseSnapshotInput = Pick<FinancialSnapshot, 'emergencyFund' | 'monthlySpend'>;
+
 /** Mini emergency fund target — a fixed cash buffer before anything else matters. */
 const MINI_EMERGENCY_FUND_TARGET = 5_000;
 
@@ -20,7 +23,7 @@ const MINI_EMERGENCY_FUND_TARGET = 5_000;
  * emergency-fund action in actionGenerator.ts, both of which treat 6 months of spend
  * as the fully-funded target).
  */
-export function computeFinancialPhase(snapshot: FinancialSnapshot, hasActiveDebts: boolean): FinancialPhase {
+export function computeFinancialPhase(snapshot: FinancialPhaseSnapshotInput, hasActiveDebts: boolean): FinancialPhase {
   const liquidSavings  = snapshot.emergencyFund;
   const fullEfTarget   = snapshot.monthlySpend * 6;
 
