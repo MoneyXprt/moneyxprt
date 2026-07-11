@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { estimateNetBonus } from '@/app/lib/deployableCapital';
-import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
+import { recordDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Unapplied bonus → debt ─────────────────────────────────────────────────
@@ -41,6 +41,17 @@ const LOGGABLE_ITEMS: LoggableItem[] = [
     icon: (
       <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 2v8m0 0v2m0-2c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'debts',
+    title: 'Debts',
+    description: 'View your active debts ranked by payoff order, track progress, and log payments as you make them.',
+    href: '/dashboard/debts',
+    icon: (
+      <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
       </svg>
     ),
   },
@@ -134,11 +145,7 @@ export default function ActualsPage() {
   const [unappliedBonuses, setUnappliedBonuses] = useState<UnappliedBonusRow[]>([]);
   const [applyingId, setApplyingId]             = useState<string | null>(null);
   const [applyError, setApplyError]             = useState<string | null>(null);
-  const [payoffCelebration, setPayoffCelebration] = useState<{
-    paidOffName: string;
-    freedMinimumPayment: number;
-    nextDebtName: string | null;
-  } | null>(null);
+  const [payoffCelebration, setPayoffCelebration] = useState<PaidOffInfo | null>(null);
 
   const fetchUnappliedBonuses = useCallback(async (userId: string) => {
     const sb = getBrowserSupabaseClient();
@@ -163,45 +170,6 @@ export default function ActualsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debt just hit $0 — mark it inactive, re-rank the remaining active debts (snowball
-  // default, same as the initial migration ranking), and surface (display only — not
-  // wired into any deployable-capital calculation yet) that its minimum payment is now
-  // free to redirect toward the next-ranked debt.
-  const handleDebtPaidOff = async (
-    sb: ReturnType<typeof getBrowserSupabaseClient>,
-    userId: string,
-    paidOffName: string,
-    freedMinimumPayment: number,
-  ) => {
-    const { data: allDebts } = await sb
-      .from('debts')
-      .select('id, current_balance, interest_rate, is_active')
-      .eq('user_id', userId);
-
-    const ranked = computeDebtPayoffOrder(
-      (allDebts ?? []).map(d => ({
-        id: d.id,
-        currentBalance: Number(d.current_balance),
-        interestRate: Number(d.interest_rate),
-        isActive: d.is_active,
-      })),
-      'snowball',
-    );
-
-    await Promise.all(
-      ranked.map(r => sb.from('debts').update({ payoff_order: r.payoffOrder }).eq('id', r.id)),
-    );
-
-    const nextEntry = ranked.find(r => r.payoffOrder === 1);
-    let nextDebtName: string | null = null;
-    if (nextEntry) {
-      const { data: nextDebtRow } = await sb.from('debts').select('name').eq('id', nextEntry.id).maybeSingle();
-      nextDebtName = nextDebtRow?.name ?? null;
-    }
-
-    setPayoffCelebration({ paidOffName, freedMinimumPayment, nextDebtName });
-  };
-
   // This is a manual, explicit action — never automatic. The user must click
   // "Apply to debt" for each bonus payment individually.
   const handleApplyToDebt = async (bonus: UnappliedBonusRow) => {
@@ -214,7 +182,7 @@ export default function ActualsPage() {
 
       const { data: topDebt, error: debtError } = await sb
         .from('debts')
-        .select('id, name, current_balance, minimum_payment')
+        .select('id')
         .eq('user_id', userId)
         .eq('is_active', true)
         .order('payoff_order', { ascending: true })
@@ -227,27 +195,15 @@ export default function ActualsPage() {
       }
 
       const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
-      const newBalance  = Math.max(0, Number(topDebt.current_balance) - appliedAmount);
-      const justPaidOff = newBalance === 0;
 
-      const { error: paymentError } = await sb.from('debt_payments').insert({
-        debt_id:      topDebt.id,
-        user_id:      userId,
-        amount:       appliedAmount,
-        payment_date: bonus.date_paid,
-        source:       'lump_sum',
-        note:         'Applied from logged bonus payment',
+      const { paidOffInfo } = await recordDebtPayment(sb, {
+        userId,
+        debtId:      topDebt.id,
+        amount:      appliedAmount,
+        paymentDate: bonus.date_paid,
+        source:      'lump_sum',
+        note:        'Applied from logged bonus payment',
       });
-      if (paymentError) throw paymentError;
-
-      const { error: updateDebtError } = await sb
-        .from('debts')
-        .update({
-          current_balance: newBalance,
-          ...(justPaidOff ? { is_active: false, paid_off_at: new Date().toISOString() } : {}),
-        })
-        .eq('id', topDebt.id);
-      if (updateDebtError) throw updateDebtError;
 
       const { error: updateBonusError } = await sb
         .from('bonus_payments_actual')
@@ -255,9 +211,7 @@ export default function ActualsPage() {
         .eq('id', bonus.id);
       if (updateBonusError) throw updateBonusError;
 
-      if (justPaidOff) {
-        await handleDebtPaidOff(sb, userId, topDebt.name, Number(topDebt.minimum_payment));
-      }
+      if (paidOffInfo) setPayoffCelebration(paidOffInfo);
 
       setUnappliedBonuses(prev => prev.filter(b => b.id !== bonus.id));
     } catch (err) {
