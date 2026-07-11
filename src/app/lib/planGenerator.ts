@@ -326,28 +326,19 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
     if (cfg.minHours > constraints.hoursPerWeek) return false;
     return true;
   });
-  const p3Actions: PlanAction[] = eligibleConfigs.map(cfg => {
-    const income = cfg.dynamicIncome ? cfg.downPayment * 0.07 / 12 : cfg.baseMonthlyIncome;
-    const priority = income > 1_500 ? 'high' : income > 700 ? 'medium' : 'low';
-    const capitalNote = cfg.downPayment > 0 ? ` Requires ${fmt(cfg.downPayment)} down.` : ' Low startup capital.';
-    return {
-      text: `${cfg.title} — adds ~${fmt(income)}/mo in passive income.${capitalNote}`,
-      priority,
-    };
-  });
-  if (p3Actions.length === 0) {
-    p3Actions.push({
-      text: 'No assets match your current constraints and preferences. Review your asset preferences or constraints to expand options.',
-      priority: 'medium',
-    });
-  }
-  phases.push({
+  // p3Actions is populated after the roadmap simulation below (Step 6.5), so each
+  // action can reference the asset's actual projected acquisition year instead of
+  // stating a capital requirement with no timeline context. phase3 is pushed now
+  // (with placeholder actions) to preserve its position in the phases array; the
+  // same object reference is mutated once the roadmap is known.
+  const phase3: Phase = {
     number: phaseNum,
     title: 'Build the Engines',
     status: phaseNum > 2 ? 'pending' : 'active',
     reason: `${eligibleConfigs.length} asset type${eligibleConfigs.length !== 1 ? 's' : ''} eligible based on your preferences and constraints.`,
-    actions: p3Actions,
-  });
+    actions: [],
+  };
+  phases.push(phase3);
 
   // Phase 4 — Execute and Track (always)
   phaseNum++;
@@ -750,6 +741,33 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
         });
       }
     }
+  }
+
+  // ── Step 6.5: Populate Phase 3 actions now that the roadmap simulation has run —
+  // look up each eligible asset's first acquisition year in the roadmap so the
+  // action text reflects reality instead of implying every asset is a near-term goal.
+  phase3.actions = eligibleConfigs.map(cfg => {
+    const income = cfg.dynamicIncome ? cfg.downPayment * 0.07 / 12 : cfg.baseMonthlyIncome;
+    const priority = income > 1_500 ? 'high' : income > 700 ? 'medium' : 'low';
+    const capitalNote = cfg.downPayment > 0 ? ` Requires ${fmt(cfg.downPayment)} down.` : ' Low startup capital.';
+    // index_investing never gets an "Acquire" row — it accrues via the index-fund
+    // sweep, so its first appearance is the first "Index Fund balance grows..." row.
+    const acquisitionRow = cfg.id === 'index_investing'
+      ? roadmap.find(r => r.action.startsWith('Index Fund balance grows'))
+      : roadmap.find(r => r.action === `${cfg.downPayment > 0 ? 'Acquire' : 'Launch'} ${cfg.title}`);
+    const timelineNote = acquisitionRow
+      ? ` Projected acquisition: ${acquisitionRow.calendarYear}.`
+      : ' Not reachable within 20 years at current pace.';
+    return {
+      text: `${cfg.title} — adds ~${fmt(income)}/mo in passive income.${capitalNote}${timelineNote}`,
+      priority,
+    };
+  });
+  if (phase3.actions.length === 0) {
+    phase3.actions.push({
+      text: 'No assets match your current constraints and preferences. Review your asset preferences or constraints to expand options.',
+      priority: 'medium',
+    });
   }
 
   return {
