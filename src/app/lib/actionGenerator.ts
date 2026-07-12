@@ -7,6 +7,7 @@ import type { GeneratedPlan } from './planGenerator';
 import type { FinancialSnapshot } from './strategies/types';
 import type { BonusPlan } from './deployableCapital';
 import { evaluateAll } from './strategies';
+import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from './financialPhase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,11 +79,22 @@ export function generateActions(
   snapshot: FinancialSnapshot,
   repsHoursThisYear = 0,
   bonusPlan: BonusPlan | null = null,
+  financialPhase?: FinancialPhase | null,
 ): ExecutionAction[] {
   const now   = new Date();
   const month = now.getMonth() + 1; // 1-indexed
   const cap   = plan.deployableCapitalPerYear;
   const spend = snapshot.monthlySpend || 1;
+
+  // Computed early (rather than alongside hasDigital/hasIndex further below) because
+  // the REPS-hours-behind this-week action needs it as a gate. Deliberately narrower
+  // than "REPS relevant" (roadmap-based only, no currentlyOwnsRental) — this is the
+  // same variable "Research your target rental market" and "Buy your first rental"
+  // use further down, where an existing owner shouldn't see shopping actions.
+  const hasRental = plan.assetRoadmap.some(r => r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental');
+  // REPS relevance is broader: also true for someone who already owns a rental, even
+  // if (for whatever reason) their roadmap has no rental-type row.
+  const repsRelevant = snapshot.currentlyOwnsRental || hasRental;
 
   const thisWeek: ExecutionAction[]    = [];
   const thisQuarter: ExecutionAction[] = [];
@@ -90,9 +102,33 @@ export function generateActions(
 
   // ── THIS WEEK ───────────────────────────────────────────────────────────────
 
-  // Emergency fund
-  if (snapshot.emergencyFund < spend * 3) {
-    const target       = spend * 6;
+  // Emergency fund — phase-aware when financialPhase is available (same rule as
+  // planGenerator.ts's Stabilize phase): funding_mini_ef targets the $5k mini-EF as an
+  // active this-week action; paying_debt defers the full EF goal — not shown as an
+  // urgent this-week action, surfaced instead as a this-year note since debt payoff is
+  // the priority; building_full_ef shows the monthlySpend×6 target as active;
+  // assets_unlocked needs no EF action at all. Falls back to the previous flat
+  // "< 3mo spend" rule when financialPhase isn't provided, matching prior behavior for
+  // callers that don't pass it.
+  let efGoalActive = false;
+  let efDeferred   = false;
+  let efTarget     = spend * 6;
+  if (financialPhase != null) {
+    if (financialPhase === 'funding_mini_ef') {
+      efGoalActive = true;
+      efTarget = MINI_EMERGENCY_FUND_TARGET;
+    } else if (financialPhase === 'building_full_ef') {
+      efGoalActive = true;
+    } else if (financialPhase === 'paying_debt') {
+      efDeferred = true;
+    }
+    // assets_unlocked: efGoalActive and efDeferred both stay false — no EF action.
+  } else {
+    efGoalActive = snapshot.emergencyFund < spend * 3;
+  }
+
+  if (efGoalActive) {
+    const target       = efTarget;
     const monthlyAdd   = Math.ceil((target - snapshot.emergencyFund) / 6);
     const sixMonthDate = new Date(now);
     sixMonthDate.setMonth(sixMonthDate.getMonth() + 6);
@@ -121,8 +157,9 @@ export function generateActions(
     });
   }
 
-  // REPS hours behind — second half of year
-  if (repsHoursThisYear < 375 && month > 6) {
+  // REPS hours behind — second half of year. Gated on repsRelevant: without a rental
+  // (owned or in the roadmap), REPS status isn't relevant regardless of hours logged.
+  if (repsRelevant && repsHoursThisYear < 375 && month > 6) {
     const remaining  = 750 - repsHoursThisYear;
     const weeksLeft  = Math.max(1, Math.ceil((new Date(endOfYear(now)).getTime() - now.getTime()) / (7 * 86_400_000)));
     const perWeek    = Math.ceil(remaining / weeksLeft);
@@ -172,8 +209,7 @@ export function generateActions(
     });
   }
 
-  // Asset-preference actions
-  const hasRental  = plan.assetRoadmap.some(r => r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental');
+  // Asset-preference actions (hasRental computed earlier, near the top of the function)
   const hasDigital = plan.assetRoadmap.some(r => r.assetType === 'digital_products');
   const hasIndex   = plan.assetRoadmap.some(r => r.assetType === 'index_investing');
 
@@ -262,12 +298,27 @@ export function generateActions(
     });
   }
 
-  // REPS hour requirement (if rentals in plan)
-  if (hasRental) {
+  // REPS hour requirement — repsRelevant (not just hasRental) so an existing rental
+  // owner still sees this even if their roadmap happens to lack a rental-type row.
+  if (repsRelevant) {
     thisYear.push({
       title: 'Complete 750 REPS hour requirement',
       description: 'Material participation in real estate requires 750+ hours/year and more time in RE than any other profession. Log and document every hour by December 31 to qualify for the powerful tax benefits of REPS status.',
       category: 'this_year', phase: 3, strategy_id: 'reps',
+      estimated_annual_value: 0, estimated_months_saved: 0,
+      completed: false, completed_at: null, due_date: endOfYear(now), sort_order: 200 + thisYear.length,
+    });
+  }
+
+  // Deferred full emergency fund — paying_debt phase only (see efDeferred above).
+  // Not urgent (debt payoff is the priority), so this lands in this_year rather than
+  // this_week — the least-urgent bucket this file has, since ExecutionAction has no
+  // separate "pending"/deferred category to mirror planGenerator's phase-status field.
+  if (efDeferred) {
+    thisYear.push({
+      title: 'Build full emergency fund once debt is cleared',
+      description: `Once your debt is paid off, build your full emergency fund to ${fmt(efTarget)} (6 months of expenses). Deferred for now — paying down debt is the priority.`,
+      category: 'this_year', phase: 1, strategy_id: null,
       estimated_annual_value: 0, estimated_months_saved: 0,
       completed: false, completed_at: null, due_date: endOfYear(now), sort_order: 200 + thisYear.length,
     });

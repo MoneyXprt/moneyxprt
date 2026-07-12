@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -164,6 +165,15 @@ export default function BonusLogPage() {
       if (error) throw error;
       setAmount(''); setNetAmount(''); setDatePaid(todayIso());
       await fetchPayments();
+
+      // A logged/edited bonus payment changes computeAnnualDeployableTotal's result —
+      // refresh capital_per_year so it doesn't go stale. Same never-block-the-save
+      // treatment as everywhere else this is called.
+      try {
+        await syncCapitalPerYear(sb, session.user.id);
+      } catch (err) {
+        console.warn('syncCapitalPerYear failed:', err instanceof Error ? err.message : err);
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Save failed. Please try again.');
     } finally {
@@ -176,7 +186,17 @@ export default function BonusLogPage() {
     if (!session) return;
     const sb = getBrowserSupabaseClient();
     const { error } = await sb.from('bonus_payments_actual').delete().eq('id', id);
-    if (!error) setPayments(prev => prev.filter(p => p.id !== id));
+    if (!error) {
+      setPayments(prev => prev.filter(p => p.id !== id));
+
+      // Deleting a logged payment changes computeAnnualDeployableTotal's result exactly
+      // as much as adding one does — refresh capital_per_year. Never blocks the delete.
+      try {
+        await syncCapitalPerYear(sb, session.user.id);
+      } catch (err) {
+        console.warn('syncCapitalPerYear failed:', err instanceof Error ? err.message : err);
+      }
+    }
   };
 
   // ── Render guards ────────────────────────────────────────────────────────

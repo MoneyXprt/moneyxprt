@@ -626,7 +626,7 @@ export default function PlanResultsPage() {
       // Regenerate execution actions — once per page mount, not on every render
       if (!actionsSaved.current) {
         actionsSaved.current = true;
-        const execActions = generateActions(generated, snapshot, 0, bonusPlan);
+        const execActions = generateActions(generated, snapshot, 0, bonusPlan, financialPhase);
         saveActions(execActions, userId).catch(e => console.warn('saveActions failed:', e));
       }
 

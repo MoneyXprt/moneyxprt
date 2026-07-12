@@ -9,6 +9,7 @@ import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { ExecutionAction } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -373,7 +374,7 @@ export default function ExecutePage() {
     const sb = getBrowserSupabaseClient();
     const currentYear = new Date().getFullYear();
 
-    const [planResult, snapshotResult, repsResult, bonusPlanResult] = await Promise.all([
+    const [planResult, snapshotResult, repsResult, bonusPlanResult, phaseResult] = await Promise.all([
       sb
         .from('generated_plans')
         .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, deployable_capital_per_year')
@@ -392,6 +393,11 @@ export default function ExecutePage() {
       sb
         .from('bonus_plan')
         .select('frequency, plan_amount, payment_month')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      sb
+        .from('financial_phase_status')
+        .select('phase')
         .eq('user_id', userId)
         .maybeSingle(),
     ]);
@@ -425,7 +431,8 @@ export default function ExecutePage() {
       paymentMonth: bonusPlanRow.payment_month,
     } : null;
 
-    const generated = generateActions(plan, snapshotResult, repsHours, bonusPlan);
+    const financialPhase = (phaseResult.data?.phase as FinancialPhase | undefined) ?? null;
+    const generated = generateActions(plan, snapshotResult, repsHours, bonusPlan, financialPhase);
     try {
       await saveActions(generated, userId);
     } catch (e) {

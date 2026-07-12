@@ -6,7 +6,7 @@ export type FinancialPhase = 'funding_mini_ef' | 'paying_debt' | 'building_full_
 export type FinancialPhaseSnapshotInput = Pick<FinancialSnapshot, 'emergencyFund' | 'monthlySpend'>;
 
 /** Mini emergency fund target — a fixed cash buffer before anything else matters. */
-const MINI_EMERGENCY_FUND_TARGET = 5_000;
+export const MINI_EMERGENCY_FUND_TARGET = 5_000;
 
 /**
  * Determines the user's current financial phase from their latest snapshot and whether

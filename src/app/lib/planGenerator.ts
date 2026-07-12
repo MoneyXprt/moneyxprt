@@ -9,7 +9,7 @@
 import { evaluateAll } from '@/app/lib/strategies';
 import { simulateDebtSnowballPayoff, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
-import type { FinancialPhase } from '@/app/lib/financialPhase';
+import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from '@/app/lib/financialPhase';
 
 // ─── Input / output types ─────────────────────────────────────────────────────
 
@@ -274,15 +274,41 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   let phaseNum = 0;
 
   // Phase 1 — Stabilize (conditional)
-  const lowEmergencyFund = snapshot.emergencyFund < snapshot.monthlySpend * 3;
+  //
+  // The emergency-fund goal is phase-aware when financialPhase is available:
+  //   funding_mini_ef  — active near-term goal, target is the $5k mini-EF.
+  //   paying_debt      — full EF is deferred (debt payoff is the priority); NOT shown
+  //                       as an active action here, surfaced as a pending/future note
+  //                       in Phase 4 instead.
+  //   building_full_ef — active near-term goal, target is monthlySpend × 6.
+  //   assets_unlocked  — no EF goal needed at all.
+  // Falls back to the previous flat "< 3mo spend, target 6mo" rule when financialPhase
+  // isn't provided, matching prior behavior for callers that don't pass it.
+  let efGoalActive = false;
+  let efDeferred   = false;
+  let efTarget     = snapshot.monthlySpend * 6;
+  if (financialPhase != null) {
+    if (financialPhase === 'funding_mini_ef') {
+      efGoalActive = true;
+      efTarget = MINI_EMERGENCY_FUND_TARGET;
+    } else if (financialPhase === 'building_full_ef') {
+      efGoalActive = true;
+    } else if (financialPhase === 'paying_debt') {
+      efDeferred = true;
+    }
+    // assets_unlocked: efGoalActive and efDeferred both stay false — no EF goal at all.
+  } else {
+    efGoalActive = snapshot.emergencyFund < snapshot.monthlySpend * 3;
+  }
+
   const hasDebt = hardConstraints.includes('significant_debt');
-  if (lowEmergencyFund || hasDebt) {
+  if (efGoalActive || hasDebt) {
     phaseNum++;
     const p1Actions: PlanAction[] = [];
-    if (lowEmergencyFund) {
-      const target = snapshot.monthlySpend * 6;
+    if (efGoalActive) {
+      const targetLabel = financialPhase === 'funding_mini_ef' ? `${fmt(efTarget)} mini emergency fund` : '6 months';
       p1Actions.push({
-        text: `Build emergency fund to ${fmt(target)} — currently ${fmt(snapshot.emergencyFund)} (${(snapshot.emergencyFund / Math.max(1, snapshot.monthlySpend)).toFixed(1)} months of expenses). Target: 6 months.`,
+        text: `Build emergency fund to ${fmt(efTarget)} — currently ${fmt(snapshot.emergencyFund)} (${(snapshot.emergencyFund / Math.max(1, snapshot.monthlySpend)).toFixed(1)} months of expenses). Target: ${targetLabel}.`,
         priority: 'high',
       });
     }
@@ -297,7 +323,9 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
       title: 'Stabilize',
       status: 'active',
       reason: [
-        lowEmergencyFund && 'Emergency fund is below 3 months of expenses.',
+        efGoalActive && (financialPhase === 'funding_mini_ef'
+          ? 'Building your starter emergency fund.'
+          : 'Emergency fund is below 6 months of expenses.'),
         hasDebt && 'Significant debt was flagged as a priority constraint.',
       ].filter(Boolean).join(' '),
       actions: p1Actions,
@@ -351,17 +379,19 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   phases.push(phase3);
 
   // Phase 4 — Execute and Track (always)
+  //
+  // The REPS time-log action is gated the same way Phase 3's asset timeline is: it's
+  // only relevant once a rental is owned or imminent. Since that requires looking at
+  // the roadmap (not built until after the simulation loop below), phase4 is pushed
+  // now with a placeholder for that one slot, and Step 6.5 mutates it in place once the
+  // roadmap is known — same pattern as phase3.
   phaseNum++;
-  phases.push({
+  const phase4: Phase = {
     number: phaseNum,
     title: 'Execute and Track',
     status: 'pending',
     reason: 'Ongoing execution discipline determines outcomes. These actions protect your plan.',
     actions: [
-      {
-        text: 'Maintain contemporaneous REPS time logs — required for audit defense (IRC §469(c)(7)). Reconstruct records are routinely rejected.',
-        priority: 'high',
-      },
       {
         text: 'Schedule a CPA review before year-end to implement top tax strategies and capture current-year savings.',
         priority: 'high',
@@ -374,8 +404,13 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
         text: 'Review asset roadmap annually — rebalance capital deployment as markets, interest rates, and opportunities shift.',
         priority: 'low',
       },
+      ...(efDeferred ? [{
+        text: `Build full emergency fund to ${fmt(efTarget)} (6 months of expenses) once debt is cleared — deferred while paying down debt is the priority.`,
+        priority: 'low' as const,
+      }] : []),
     ],
-  });
+  };
+  phases.push(phase4);
 
   // ── Step 6: Asset roadmap ─────────────────────────────────────────────────
   const roadmap: AssetRoadmapRow[] = [];
@@ -779,6 +814,29 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
       priority: 'medium',
     });
   }
+
+  // Phase 4's REPS time-log action is only relevant once a rental is owned or imminent
+  // — gated the same way Phase 3's timeline lookups work, searching the same roadmap
+  // for an "Acquire {rental}" row. Active/high-priority when owned now or acquired
+  // within 2 years; otherwise deferred to a low-priority note, same pattern as the
+  // emergency-fund deferral above, rather than implying it's a near-term goal.
+  const rentalAcquisitionRow = roadmap.find(
+    r => (r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental') && r.action.startsWith('Acquire'),
+  );
+  const repsRelevantNow = snapshot.currentlyOwnsRental || (!!rentalAcquisitionRow && rentalAcquisitionRow.year <= 2);
+  phase4.actions.unshift(
+    repsRelevantNow
+      ? {
+          text: 'Maintain contemporaneous REPS time logs — required for audit defense (IRC §469(c)(7)). Reconstruct records are routinely rejected.',
+          priority: 'high',
+        }
+      : {
+          text: rentalAcquisitionRow
+            ? `REPS time logging becomes relevant once you acquire a rental — projected ${rentalAcquisitionRow.calendarYear}. Start logging hours the year of acquisition.`
+            : 'REPS time logging becomes relevant once you own or are close to acquiring a rental property — not applicable to your current plan.',
+          priority: 'low',
+        },
+  );
 
   return {
     freedomGap: {
