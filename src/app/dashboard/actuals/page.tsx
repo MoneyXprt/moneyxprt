@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { estimateNetBonus } from '@/app/lib/deployableCapital';
-import { recordDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
+import { recordCascadingDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
 import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import type { Session } from '@supabase/supabase-js';
 
@@ -146,7 +146,8 @@ export default function ActualsPage() {
   const [unappliedBonuses, setUnappliedBonuses] = useState<UnappliedBonusRow[]>([]);
   const [applyingId, setApplyingId]             = useState<string | null>(null);
   const [applyError, setApplyError]             = useState<string | null>(null);
-  const [payoffCelebration, setPayoffCelebration] = useState<PaidOffInfo | null>(null);
+  // Array — a single cascading apply can pay off more than one debt in one action.
+  const [payoffCelebrations, setPayoffCelebrations] = useState<PaidOffInfo[]>([]);
 
   const fetchUnappliedBonuses = useCallback(async (userId: string) => {
     const sb = getBrowserSupabaseClient();
@@ -197,9 +198,12 @@ export default function ActualsPage() {
 
       const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
 
-      const { paidOffInfo } = await recordDebtPayment(sb, {
+      // Cascading — a lump sum can exceed the top debt's balance, in which case the
+      // remainder rolls into subsequently-ranked active debts (each getting its own
+      // debt_payments row) until the amount is exhausted or debts run out.
+      const { paidOffInfos } = await recordCascadingDebtPayment(sb, {
         userId,
-        debtId:      topDebt.id,
+        startDebtId: topDebt.id,
         amount:      appliedAmount,
         paymentDate: bonus.date_paid,
         source:      'lump_sum',
@@ -212,8 +216,8 @@ export default function ActualsPage() {
         .eq('id', bonus.id);
       if (updateBonusError) throw updateBonusError;
 
-      if (paidOffInfo) {
-        setPayoffCelebration(paidOffInfo);
+      if (paidOffInfos.length > 0) {
+        setPayoffCelebrations(paidOffInfos);
         // Paying off a debt is the only debt-side event that can change hasActiveDebts
         // (a regular partial payment never does) — recompute here, not on every payment.
         try {
@@ -275,28 +279,29 @@ export default function ActualsPage() {
           </p>
         </div>
 
-        {/* ── Debt paid off celebration ─────────────────────────────────
+        {/* ── Debt paid off celebration(s) ──────────────────────────────
             Display only — freedMinimumPayment is not yet wired into any
-            deployable-capital calculation. */}
-        {payoffCelebration && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 relative">
+            deployable-capital calculation. A single cascading apply can pay off more
+            than one debt, so this renders one banner per debt paid off. */}
+        {payoffCelebrations.map((celebration, i) => (
+          <div key={`${celebration.paidOffName}-${i}`} className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 relative">
             <button
               type="button"
-              onClick={() => setPayoffCelebration(null)}
+              onClick={() => setPayoffCelebrations(prev => prev.filter((_, idx) => idx !== i))}
               aria-label="Dismiss"
               className="absolute top-3 right-3 text-emerald-400 hover:text-emerald-700 transition text-sm leading-none"
             >
               ✕
             </button>
-            <p className="text-sm font-bold text-emerald-900 pr-6">🎉 {payoffCelebration.paidOffName} paid off!</p>
+            <p className="text-sm font-bold text-emerald-900 pr-6">🎉 {celebration.paidOffName} paid off!</p>
             <p className="text-xs text-emerald-800 mt-1.5 leading-relaxed">
-              That frees up {fmtUsd(payoffCelebration.freedMinimumPayment)}/month you were paying toward it.
-              {payoffCelebration.nextDebtName
-                ? ` Consider redirecting it toward ${payoffCelebration.nextDebtName}, your next-ranked debt.`
+              That frees up {fmtUsd(celebration.freedMinimumPayment)}/month you were paying toward it.
+              {celebration.nextDebtName
+                ? ` Consider redirecting it toward ${celebration.nextDebtName}, your next-ranked debt.`
                 : ' You have no other active debts — consider redirecting it toward savings or investing.'}
             </p>
           </div>
-        )}
+        ))}
 
         {/* ── Unapplied bonus payments → debt ─────────────────────────── */}
         {unappliedBonuses.length > 0 && (

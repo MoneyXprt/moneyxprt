@@ -80,6 +80,133 @@ export async function recordDebtPayment(
   return { newBalance, paidOff, paidOffInfo };
 }
 
+// ─── Cascading (multi-debt) payment ────────────────────────────────────────
+
+export interface DebtAffected {
+  debtId: string;
+  debtName: string;
+  amountApplied: number;
+  paidOff: boolean;
+}
+
+export interface CascadingPaymentResult {
+  /** Sum of amountApplied across debtsAffected — equals amount minus remainderUnapplied. */
+  totalApplied: number;
+  /** > 0 only if every active debt got fully paid off before the amount was exhausted. */
+  remainderUnapplied: number;
+  /** One entry per debt actually touched, in the order payments were applied. */
+  debtsAffected: DebtAffected[];
+  /** One entry per debt that was fully paid off during this call, in payoff order. */
+  paidOffInfos: PaidOffInfo[];
+}
+
+export interface RecordCascadingDebtPaymentParams {
+  userId: string;
+  /** Debt to start applying against — the caller's chosen top-ranked debt. */
+  startDebtId: string;
+  amount: number;
+  paymentDate: string; // 'YYYY-MM-DD'
+  source: 'regular' | 'lump_sum';
+  note?: string | null;
+}
+
+/**
+ * Applies a payment that may exceed the starting debt's balance, cascading the
+ * remainder into subsequently-ranked active debts until either the full amount is
+ * allocated or no active debts remain. Built on recordDebtPayment as its per-debt
+ * primitive — each debt actually paid against gets its own debt_payments row (one
+ * recordDebtPayment call per debt), never a single row for the whole lump sum, so
+ * payment history accurately reflects where the money went.
+ *
+ * Deliberately separate from recordDebtPayment itself, which debts/page.tsx's manual
+ * "Log a payment" (handleLogPayment) keeps using unmodified — there, the user picks a
+ * specific debt on purpose, and an overpayment should not silently roll into a
+ * different, un-selected debt. This function is only for Actuals' "Apply bonus to
+ * debt," which always targets the top-ranked debt and is exactly the flow a real lump
+ * sum can exceed.
+ */
+export async function recordCascadingDebtPayment(
+  sb: SupabaseClient,
+  params: RecordCascadingDebtPaymentParams,
+): Promise<CascadingPaymentResult> {
+  const { userId, amount, paymentDate, source, note, startDebtId } = params;
+
+  let remaining = amount;
+  let currentDebtId: string | null = startDebtId;
+  const debtsAffected: DebtAffected[] = [];
+  const paidOffInfos: PaidOffInfo[] = [];
+
+  while (remaining > 0 && currentDebtId) {
+    const { data: debt, error: debtError } = await sb
+      .from('debts')
+      .select('id, name, current_balance')
+      .eq('id', currentDebtId)
+      .single();
+    if (debtError) throw debtError;
+
+    const balance = Number(debt.current_balance);
+    // Defensive guard — the loop only ever advances to a debt just confirmed active
+    // with a positive balance (either the caller's startDebtId or a freshly re-ranked
+    // top debt), so this shouldn't trigger in practice.
+    if (balance <= 0) break;
+
+    const amountForThisDebt = Math.min(remaining, balance);
+
+    const { paidOff, paidOffInfo } = await recordDebtPayment(sb, {
+      userId,
+      debtId: currentDebtId,
+      amount: amountForThisDebt,
+      paymentDate,
+      source,
+      note,
+    });
+
+    debtsAffected.push({
+      debtId: currentDebtId,
+      debtName: debt.name,
+      amountApplied: amountForThisDebt,
+      paidOff,
+    });
+    remaining -= amountForThisDebt;
+
+    if (!paidOff || !paidOffInfo) {
+      // amountForThisDebt < balance, i.e. amountForThisDebt === remaining (the min()
+      // branch that took remaining) — the payment was fully consumed on this debt with
+      // balance left over on it. Nothing left to cascade. (recordDebtPayment guarantees
+      // paidOffInfo is non-null whenever paidOff is true, but this is money-handling
+      // code — checking both explicitly instead of asserting it.)
+      currentDebtId = null;
+      continue;
+    }
+
+    paidOffInfos.push(paidOffInfo);
+
+    if (remaining <= 0) {
+      currentDebtId = null;
+      continue;
+    }
+
+    // recordDebtPayment already re-ranked remaining active debts (via
+    // reRankAfterPayoff) — fetch whichever one is now top-ranked to continue.
+    const { data: nextTop } = await sb
+      .from('debts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('payoff_order', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    currentDebtId = nextTop?.id ?? null;
+  }
+
+  return {
+    totalApplied: amount - remaining,
+    remainderUnapplied: remaining,
+    debtsAffected,
+    paidOffInfos,
+  };
+}
+
 async function reRankAfterPayoff(
   sb: SupabaseClient,
   userId: string,
