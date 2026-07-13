@@ -299,6 +299,52 @@ function Section({
   );
 }
 
+// ─── Debt interest cards ──────────────────────────────────────────────────────
+
+interface DebtRow {
+  id: string;
+  name: string;
+  current_balance: number;
+  interest_rate: number; // stored as a plain percentage, e.g. 6 = 6.00% APR
+}
+
+function DebtCostRow({ debt }: { debt: DebtRow }) {
+  const annualCost = debt.current_balance * (debt.interest_rate / 100);
+  return (
+    <Link
+      href="/dashboard/debts"
+      className="block rounded-xl border border-red-100 bg-red-50/40 p-4 hover:bg-red-50 transition"
+    >
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+          <span className="text-sm font-semibold text-gray-900">{debt.name}</span>
+        </div>
+        <span className="text-base font-bold text-red-700 tabular-nums shrink-0">
+          {fmt(annualCost)}<span className="text-xs font-normal text-red-600">/yr</span>
+        </span>
+      </div>
+      <p className="text-xs text-gray-600 leading-relaxed pl-4">
+        {fmt(debt.current_balance)} balance at {debt.interest_rate.toFixed(2)}% APR
+      </p>
+    </Link>
+  );
+}
+
+function DebtCostHero({ totalAnnualInterest, debtCount }: { totalAnnualInterest: number; debtCount: number }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <p className="text-sm text-gray-400 mb-1.5">Interest costing you this year:</p>
+      <p className="text-4xl font-extrabold text-red-600 tabular-nums leading-none">
+        {fmt(totalAnnualInterest)}
+        <span className="text-lg font-semibold text-gray-500 ml-1.5">
+          /year across {debtCount} active debt{debtCount !== 1 ? 's' : ''}
+        </span>
+      </p>
+    </div>
+  );
+}
+
 // ─── Threat hero (Defend Part 2) ─────────────────────────────────────────────
 
 function ThreatHero({ cashValue, projectedValue, snapshotDate }: { cashValue: number; projectedValue: number; snapshotDate?: string }) {
@@ -375,6 +421,7 @@ export default function AuditResultsPage() {
   const [sessionLoading, setSessionLoading] = useState(true);
 
   const [results, setResults]         = useState<StrategyResult[] | null>(null);
+  const [debts, setDebts]             = useState<DebtRow[]>([]);
   const [snapshotDate, setSnapshotDate] = useState<string | undefined>();
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
@@ -402,7 +449,7 @@ export default function AuditResultsPage() {
   }, []);
 
   // ── Load snapshot + run engine ───────────────────────────────────────────
-  const runAudit = useCallback(async () => {
+  const runAudit = useCallback(async (userId: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -423,6 +470,15 @@ export default function AuditResultsPage() {
       if (row?.created_at) setSnapshotDate(row.created_at as string);
 
       setResults(evaluateAll(snapshot));
+
+      // Debt interest — fetched fresh every load (never cached/stored), since balances
+      // change as debts are paid down.
+      const { data: debtRows } = await sb
+        .from('debts')
+        .select('id, name, current_balance, interest_rate')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      setDebts((debtRows ?? []) as DebtRow[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load your audit results.');
     } finally {
@@ -431,7 +487,7 @@ export default function AuditResultsPage() {
   }, []);
 
   useEffect(() => {
-    if (session) runAudit();
+    if (session) runAudit(session.user.id);
   }, [session, runAudit]);
 
   // ── Render guards ────────────────────────────────────────────────────────
@@ -451,6 +507,13 @@ export default function AuditResultsPage() {
   const totalActiveValue    = active.reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
   const totalCashValue      = active.filter(r => r.valueType === 'cash').reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
   const totalProjectedValue = active.filter(r => r.valueType === 'projected').reduce((sum, r) => sum + r.estimatedAnnualValue, 0);
+
+  const debtsRankedByAnnualCost = [...debts].sort(
+    (a, b) => (b.current_balance * b.interest_rate) - (a.current_balance * a.interest_rate),
+  );
+  const totalAnnualInterest = debtsRankedByAnnualCost.reduce(
+    (sum, d) => sum + d.current_balance * (d.interest_rate / 100), 0,
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -530,6 +593,21 @@ export default function AuditResultsPage() {
 
             {/* Threat hero (Defend Part 2) */}
             <ThreatHero cashValue={totalCashValue} projectedValue={totalProjectedValue} snapshotDate={snapshotDate} />
+
+            {/* Debt costing you money — ranked by annual interest cost, fetched fresh
+                every load (not cached) since balances change as debts are paid down. */}
+            {debtsRankedByAnnualCost.length > 0 && (
+              <>
+                <DebtCostHero totalAnnualInterest={totalAnnualInterest} debtCount={debtsRankedByAnnualCost.length} />
+                <Section
+                  title="Debt costing you money"
+                  badge={debtsRankedByAnnualCost.length}
+                  badgeColor="bg-red-100 text-red-700"
+                >
+                  {debtsRankedByAnnualCost.map(d => <DebtCostRow key={d.id} debt={d} />)}
+                </Section>
+              </>
+            )}
 
             {/* Available Now */}
             <Section
