@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { recordDebtPayment, type PaidOffInfo } from '@/app/lib/debtPayments';
 import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
@@ -273,14 +274,16 @@ export default function DebtsPage() {
       {/* ── Top nav ────────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Link href="/dashboard/actuals" className="text-sm text-gray-400 hover:text-gray-700 transition shrink-0">← Actuals</Link>
+            <span className="text-gray-200 shrink-0">/</span>
             <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <span className="font-semibold text-gray-900 text-sm">MoneyXprt</span>
-            <span className="text-gray-300">/</span>
+            <span className="font-semibold text-gray-900 text-sm hidden sm:inline">MoneyXprt</span>
+            <span className="text-gray-300 hidden sm:inline">/</span>
             <span className="text-sm text-gray-500">Debts</span>
           </div>
           <div className="flex items-center gap-3">
