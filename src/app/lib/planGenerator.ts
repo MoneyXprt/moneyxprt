@@ -7,7 +7,7 @@
  */
 
 import { evaluateAll } from '@/app/lib/strategies';
-import { simulateDebtSnowballPayoff, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
+import { simulateDebtSnowballPayoff, computeDebtPayoffOrder, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from '@/app/lib/financialPhase';
 
@@ -229,6 +229,28 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   const addedToDeployableCapital = taxSavingsActive + taxSavingsVerify;
   const deployableCapitalPerYear = constraints.capitalPerYear + addedToDeployableCapital;
 
+  // ── Debt-payoff-first gating ──────────────────────────────────────────────
+  // If the user is still in a debt/mini-EF phase, redirect deployable capital to
+  // clearing debt before any capital-asset acquisition or index investing — see
+  // simulateDebtSnowballPayoff's doc comment for the simplifications involved.
+  // debtFreeYear stays 0 (no gating) when financialPhase wasn't provided, isn't a
+  // debt-payoff phase, or there are no active debts to pay off. Computed here (rather
+  // than right before the roadmap loop, where it used to live) because Phase 1's debt
+  // action below needs it too, and it depends on nothing built between here and there.
+  const isDebtPayoffPhase = financialPhase === 'funding_mini_ef' || financialPhase === 'paying_debt';
+  const debtSimulation = isDebtPayoffPhase && debts && debts.length > 0
+    ? simulateDebtSnowballPayoff(debts, deployableCapitalPerYear)
+    : null;
+  const debtFreeYear = debtSimulation ? debtSimulation.yearsToPayoff : 0;
+  const debtPayoffEventsByYear = new Map<number, DebtPayoffEvent[]>();
+  if (debtSimulation) {
+    for (const event of debtSimulation.events) {
+      const list = debtPayoffEventsByYear.get(event.year) ?? [];
+      list.push(event);
+      debtPayoffEventsByYear.set(event.year, list);
+    }
+  }
+
   // ── Step 2b: Post-rental tax unlock value ─────────────────────────────────
   // If the user doesn't currently own a rental but the roadmap will acquire one,
   // compute how much additional annual value depreciation/REPS would unlock.
@@ -313,10 +335,50 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
       });
     }
     if (hasDebt) {
-      p1Actions.push({
-        text: 'Develop debt paydown strategy — eliminate high-interest debt before deploying capital to assets. High-rate debt is a guaranteed negative return.',
-        priority: 'high',
-      });
+      // Use the actual computed payoff plan (debtSimulation, same data the roadmap's
+      // debt-payoff rows and totalStartingDebt figure come from) when available;
+      // otherwise fall back to the old generic line — e.g. financialPhase/debts wasn't
+      // passed by an older caller, or hasDebt (the hardConstraints flag) is set but the
+      // account isn't actually in a debt-payoff phase per the debts table.
+      const activeDebtsForPlan = (debts ?? []).filter(d => d.isActive && d.currentBalance > 0);
+      if (debtSimulation && activeDebtsForPlan.length > 0) {
+        const order = computeDebtPayoffOrder(
+          activeDebtsForPlan.map(d => ({ id: d.id, currentBalance: d.currentBalance, interestRate: d.interestRate, isActive: true })),
+          'snowball',
+        );
+        const orderedDebts = order
+          .filter((r): r is { id: string; payoffOrder: number } => r.payoffOrder != null)
+          .sort((a, b) => a.payoffOrder - b.payoffOrder)
+          .map(r => activeDebtsForPlan.find(d => d.id === r.id)!);
+
+        const allClearYearOne = orderedDebts.every(d =>
+          debtSimulation.events.some(e => e.debtId === d.id && e.year === 1),
+        );
+
+        if (allClearYearOne) {
+          p1Actions.push({
+            text: 'All active debt is projected to clear within the next 12 months at your current deployable capital pace.',
+            priority: 'high',
+          });
+        } else {
+          const monthlyExtra = deployableCapitalPerYear / 12;
+          for (const d of orderedDebts) {
+            const event = debtSimulation.events.find(e => e.debtId === d.id);
+            const payoffText = event
+              ? `projected payoff ${currentYear + event.year}`
+              : 'not projected to clear within 20 years at current pace';
+            p1Actions.push({
+              text: `${d.name}: pay ${fmt(monthlyExtra)}/mo + minimum, ${payoffText}.`,
+              priority: 'high',
+            });
+          }
+        }
+      } else {
+        p1Actions.push({
+          text: 'Develop debt paydown strategy — eliminate high-interest debt before deploying capital to assets. High-rate debt is a guaranteed negative return.',
+          priority: 'high',
+        });
+      }
     }
     phases.push({
       number: phaseNum,
@@ -450,26 +512,6 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
   const launchedZeroCost = new Map<string, {
     launchYear: number; growthCount: number; currentIncome: number; cfg: AssetConfig;
   }>();
-
-  // ── Debt-payoff-first gating ──────────────────────────────────────────────
-  // If the user is still in a debt/mini-EF phase, redirect deployable capital to
-  // clearing debt before any capital-asset acquisition or index investing — see
-  // simulateDebtSnowballPayoff's doc comment for the simplifications involved.
-  // debtFreeYear stays 0 (no gating) when financialPhase wasn't provided, isn't a
-  // debt-payoff phase, or there are no active debts to pay off.
-  const isDebtPayoffPhase = financialPhase === 'funding_mini_ef' || financialPhase === 'paying_debt';
-  const debtSimulation = isDebtPayoffPhase && debts && debts.length > 0
-    ? simulateDebtSnowballPayoff(debts, deployableCapitalPerYear)
-    : null;
-  const debtFreeYear = debtSimulation ? debtSimulation.yearsToPayoff : 0;
-  const debtPayoffEventsByYear = new Map<number, DebtPayoffEvent[]>();
-  if (debtSimulation) {
-    for (const event of debtSimulation.events) {
-      const list = debtPayoffEventsByYear.get(event.year) ?? [];
-      list.push(event);
-      debtPayoffEventsByYear.set(event.year, list);
-    }
-  }
 
   // If already free
   if (gapMonthly <= 0) {

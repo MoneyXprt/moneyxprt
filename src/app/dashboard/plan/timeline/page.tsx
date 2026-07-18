@@ -30,6 +30,8 @@ interface ConstraintsRow {
   hard_constraints:  unknown;
 }
 interface AssumptionsRow {
+  business_monthly_12:         number;
+  business_monthly_36:         number;
   spouse_business_monthly_12:  number;
   spouse_business_monthly_36:  number;
   digital_products_monthly_12: number;
@@ -40,6 +42,7 @@ interface AssumptionsRow {
 }
 interface ExecRow {
   id: string; title: string; category: string; completed: boolean; sort_order: number;
+  due_date: string | null;
 }
 
 // ─── Lever state ──────────────────────────────────────────────────────────────
@@ -60,15 +63,31 @@ function leversFromData(
   plan: GeneratedPlan | null,
   currentYear: number,
 ): Levers {
-  const firstRentalRow = plan?.assetRoadmap.find(r => r.assetType === 'long_term_rental');
-  const firstRentalDelayYears = assumptions?.first_rental_delay_years ?? (firstRentalRow ? Math.max(0, firstRentalRow.year - 1) : 2);
+  // defaultRentalYear is the true baseline — derived from generatePlan's actual asset
+  // roadmap, searching for the exact "Acquire Long Term Rental" row (same pattern
+  // Phase 3 in planGenerator.ts uses) rather than matching on assetType alone.
+  // assetType is also set on "Building toward Long Term Rental (...)" rows before the
+  // acquisition actually happens, which previously caused this to lock onto the wrong
+  // (much earlier) year. Falls back to a rough delay-based estimate only when no such
+  // row exists in the roadmap at all (e.g. beyond the 20-year projection window).
+  const firstRentalAcquireRow = plan?.assetRoadmap.find(r => r.action === 'Acquire Long Term Rental');
+  const defaultRentalYear = firstRentalAcquireRow
+    ? firstRentalAcquireRow.calendarYear
+    : currentYear + 2 + 1;
+
+  // If the user has deliberately saved a first_rental_delay_years value, that choice
+  // still overrides the computed default — existing behavior, unchanged — otherwise
+  // fall back to the roadmap-derived baseline above.
+  const firstRentalYear = assumptions?.first_rental_delay_years != null
+    ? currentYear + Number(assumptions.first_rental_delay_years) + 1
+    : defaultRentalYear;
   return {
     monthlyCapital:        (constraints?.capital_per_year ?? 41000) / 12,
     spouseBusinessMonthly: assumptions?.spouse_business_monthly_12 ?? 0,
     digitalProductsMonthly: assumptions?.digital_products_monthly_12 ?? 0,
     freedomNumber:         profile?.freedom_number_monthly ?? 14200,
     bonusGrowthRate:       Math.round((assumptions?.bonus_growth_rate ?? 0) * 100),
-    firstRentalYear:       currentYear + firstRentalDelayYears + 1,
+    firstRentalYear,
   };
 }
 
@@ -193,6 +212,20 @@ function FreedomDateCard({
   const yearDelta = saved - live; // Bug 3: positive = live is EARLIER = better
   const yearsBack = Math.max(0, 65 - targetFreeAge); // Bug 2: years gained vs. working to 65
 
+  // Brief pulse on the "Adjusted" number whenever it actually changes value — so a
+  // lever-driven freedom-year shift reads as an obvious event, not an instant/easy-to-miss
+  // swap. Hooks must run unconditionally (before the early return below).
+  const prevLiveRef = useRef(live);
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    if (prevLiveRef.current !== live) {
+      prevLiveRef.current = live;
+      setPulse(true);
+      const t = setTimeout(() => setPulse(false), 500);
+      return () => clearTimeout(t);
+    }
+  }, [live]);
+
   const rightCol = (
     <div className="border-l border-gray-100 pl-4">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
@@ -235,9 +268,9 @@ function FreedomDateCard({
           </div>
           <div className="flex items-baseline gap-1.5 mt-1.5 flex-wrap">
             <span className="text-xs text-gray-400">Adjusted:</span>
-            <span className={`text-xl font-extrabold tabular-nums transition-colors ${
+            <span className={`inline-block text-xl font-extrabold tabular-nums transition-all duration-300 ease-out ${
               live < saved ? 'text-emerald-600' : live > saved ? 'text-amber-600' : 'text-gray-900'
-            }`}>{live}</span>
+            } ${pulse ? 'scale-125' : 'scale-100'}`}>{live}</span>
             {yearDelta !== 0 && (
               <span className={`text-xs font-semibold ${yearDelta > 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
                 {yearDelta > 0 ? `${yearDelta}yr earlier` : `${Math.abs(yearDelta)}yr later`}
@@ -299,8 +332,15 @@ function RentalDropdown({
 }: {
   value: number | null; onChange: (v: number | null) => void; currentYear: number;
 }) {
+  // A fixed currentYear..+4 window silently mismatches whenever the real computed
+  // baseline (value, which at initial render is defaultRentalYear from leversFromData)
+  // falls outside it — the <select> then shows none of its options selected and the
+  // browser defaults to displaying the first one, looking stale/wrong with no error.
+  // Extend the range to always include the actual value.
+  const maxYear = Math.max(currentYear + 4, value ?? currentYear + 4);
   const options = [
-    ...([0, 1, 2, 3, 4].map(d => ({ value: currentYear + d, label: String(currentYear + d) }))),
+    ...Array.from({ length: maxYear - currentYear + 1 }, (_, i) => currentYear + i)
+      .map(y => ({ value: y, label: String(y) })),
     { value: null as number | null, label: 'Not planning a rental' },
   ];
 
@@ -441,14 +481,14 @@ export default function TimelinePage() {
           .select('capital_per_year, hours_per_week, risk_tolerance, hard_constraints')
           .eq('user_id', userId).maybeSingle(),
         sb.from('plan_assumptions')
-          .select('spouse_business_monthly_12, spouse_business_monthly_36, digital_products_monthly_12, digital_products_monthly_36, digital_products_peak, first_rental_delay_years, bonus_growth_rate')
+          .select('business_monthly_12, business_monthly_36, spouse_business_monthly_12, spouse_business_monthly_36, digital_products_monthly_12, digital_products_monthly_36, digital_products_peak, first_rental_delay_years, bonus_growth_rate')
           .eq('user_id', userId).maybeSingle(),
         sb.from('generated_plans')
           .select('freedom_gap, asset_roadmap, phases, tax_strategy_stack, deployable_capital_per_year')
           .eq('user_id', userId).eq('is_current', true)
           .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         sb.from('execution_actions')
-          .select('id, title, category, completed, sort_order')
+          .select('id, title, category, completed, sort_order, due_date')
           .eq('user_id', userId).order('sort_order'),
         sb.from('financial_phase_status')
           .select('phase').eq('user_id', userId).maybeSingle(),
@@ -472,20 +512,58 @@ export default function TimelinePage() {
 
       if (!planRow) { setNoPlan(true); setLoading(false); return; }
 
-      const plan: GeneratedPlan = {
-        freedomGap:               planRow.freedom_gap as GeneratedPlan['freedomGap'],
-        phases:                   planRow.phases as GeneratedPlan['phases'],
-        taxStrategyStack:         planRow.tax_strategy_stack as GeneratedPlan['taxStrategyStack'],
-        assetRoadmap:             (planRow.asset_roadmap as GeneratedPlan['assetRoadmap']) ?? [],
-        deployableCapitalPerYear: Number(planRow.deployable_capital_per_year),
-        aiNarrative:              null,
-      };
-
       const prof  = profileRow  as ProfileRow  | null;
       const cons  = constraintsRow as ConstraintsRow | null;
       const asmp  = assumptionsRow as AssumptionsRow | null;
       const rows  = (actionRows ?? []) as ExecRow[];
       const prefs = (assetRows ?? []).map(r => r.asset_type as string);
+
+      // Compute the baseline plan the same way plan/results/page.tsx's defaultPlan
+      // does — fresh via generatePlan with the real financialPhase/debts — instead of
+      // reading the stored generated_plans row verbatim. The stored row can be stale
+      // relative to the current debt-gating logic if the user hasn't revisited
+      // /dashboard/plan/results since those changed (savePlan is only ever called from
+      // that page). Deliberately no second (incomeAssumptions) argument, matching
+      // plan/results/page.tsx's generatePlan(inputs) call exactly — passing assumptions
+      // here was the confirmed sole divergence causing this baseline to compute a
+      // different rental year than Plan's. Falls back to the stored row only when
+      // there isn't enough data to call generatePlan (snapshot/profile/constraints
+      // missing).
+      let plan: GeneratedPlan;
+      if (snap && prof && cons) {
+        plan = generatePlan({
+          freedomProfile: {
+            visionText:    prof.vision_text ?? null,
+            targetFreeAge: Number(prof.target_free_age),
+            freedomType:   prof.freedom_type as 'never_work' | 'work_optional' | 'lower_stress',
+          },
+          freedomNumber: {
+            monthlyTarget:   Number(prof.freedom_number_monthly),
+            portfolioTarget: Number(prof.freedom_number_monthly) * 300,
+            breakdown:       {},
+          },
+          snapshot: snap,
+          assetPreferences: prefs,
+          constraints: {
+            capitalPerYear:  Number(cons.capital_per_year),
+            hoursPerWeek:    Number(cons.hours_per_week),
+            riskTolerance:   cons.risk_tolerance,
+            hardConstraints: (cons.hard_constraints as string[]) ?? [],
+          },
+          financialPhase: fetchedPhase,
+          debts: fetchedDebts,
+        });
+      } else {
+        // Not enough data to recompute — fall back to the stored row as before.
+        plan = {
+          freedomGap:               planRow.freedom_gap as GeneratedPlan['freedomGap'],
+          phases:                   planRow.phases as GeneratedPlan['phases'],
+          taxStrategyStack:         planRow.tax_strategy_stack as GeneratedPlan['taxStrategyStack'],
+          assetRoadmap:             (planRow.asset_roadmap as GeneratedPlan['assetRoadmap']) ?? [],
+          deployableCapitalPerYear: Number(planRow.deployable_capital_per_year),
+          aiNarrative:              null,
+        };
+      }
 
       const initLevers = leversFromData(cons, asmp, prof, plan, currentYear);
 
@@ -508,6 +586,7 @@ export default function TimelinePage() {
         plan, snap ?? { monthlySpend: 0, emergencyFund: 0 } as unknown as FinancialSnapshot,
         initLevers.monthlyCapital * 12, currentYear,
         Number(prof?.target_free_age ?? 50), completedTitles, thisYearActions,
+        fetchedPhase,
       ));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load timeline data.');
@@ -532,11 +611,14 @@ export default function TimelinePage() {
         const newMilestones   = calculateMilestones(
           newPlan, snapshot, levers.monthlyCapital * 12, currentYear,
           Number(profile.target_free_age), completedTitles, thisYearActions,
+          financialPhase,
         );
         setLivePlan(newPlan);
         setMilestones(newMilestones);
-      } catch {
-        // recalculation error — keep previous milestones
+      } catch (err) {
+        // Recalculation failed — keep showing previous milestones/livePlan rather than
+        // a broken partial state, but log it so a silent failure isn't invisible again.
+        console.warn('[timeline] lever recalculation failed:', err);
       } finally {
         setRecalculating(false);
       }
