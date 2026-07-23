@@ -2,7 +2,8 @@
  * planGenerator.ts
  *
  * Pure TypeScript plan generation engine — no network calls, no side effects.
- * Import generatePlan for the pure computation.
+ * Import generateBaselinePlan for the plan computed from saved data alone, or
+ * generatePreviewPlan when live income-growth assumptions should be applied.
  * Import savePlan for the Supabase persistence layer (separate concern).
  */
 
@@ -208,7 +209,7 @@ function fmt(n: number): string {
 
 // ─── Core generator ───────────────────────────────────────────────────────────
 
-export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssumptions): GeneratedPlan {
+function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAssumptions): GeneratedPlan {
   const { freedomNumber, snapshot, assetPreferences, constraints, financialPhase, debts } = inputs;
   const { hardConstraints } = constraints;
   const currentYear = new Date().getFullYear();
@@ -902,6 +903,16 @@ export function generatePlan(inputs: PlanInputs, incomeAssumptions?: IncomeAssum
       ? { debtFreeYear: currentYear + debtSimulation.yearsToPayoff, totalStartingDebt: debtSimulation.totalStartingDebt }
       : null,
   };
+}
+
+// Plan computed from saved data alone, no income-growth assumptions applied.
+export function generateBaselinePlan(inputs: PlanInputs): GeneratedPlan {
+  return _generatePlanInternal(inputs);
+}
+
+// Plan computed with live income-growth assumptions layered on top of saved data.
+export function generatePreviewPlan(inputs: PlanInputs, incomeAssumptions: IncomeAssumptions): GeneratedPlan {
+  return _generatePlanInternal(inputs, incomeAssumptions);
 }
 
 // ─── Persistence layer ────────────────────────────────────────────────────────

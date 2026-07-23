@@ -5,7 +5,7 @@ import { Tooltip } from '@/components/Tooltip';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
-import { generatePlan, savePlan } from '@/app/lib/planGenerator';
+import { generateBaselinePlan, savePlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
@@ -594,7 +594,7 @@ export default function PlanResultsPage() {
       }
 
       // Generate + save
-      const generated = generatePlan(inputs);
+      const generated = generateBaselinePlan(inputs);
       setPlan(generated);
 
       // Vision text for emotional moments

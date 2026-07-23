@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
-import { generatePlan } from '@/app/lib/planGenerator';
+import { generateBaselinePlan, generatePreviewPlan } from '@/app/lib/planGenerator';
 import { calculateMilestones } from '@/app/lib/milestoneCalculator';
 import { FreedomTimeline } from '@/components/FreedomTimeline';
 import type { GeneratedPlan, IncomeAssumptions, PlanInputs } from '@/app/lib/planGenerator';
@@ -63,8 +63,8 @@ function leversFromData(
   plan: GeneratedPlan | null,
   currentYear: number,
 ): Levers {
-  // defaultRentalYear is the true baseline — derived from generatePlan's actual asset
-  // roadmap, searching for the exact "Acquire Long Term Rental" row (same pattern
+  // defaultRentalYear is the true baseline — derived from generateBaselinePlan's actual
+  // asset roadmap, searching for the exact "Acquire Long Term Rental" row (same pattern
   // Phase 3 in planGenerator.ts uses) rather than matching on assetType alone.
   // assetType is also set on "Building toward Long Term Rental (...)" rows before the
   // acquisition actually happens, which previously caused this to lock onto the wrong
@@ -519,19 +519,18 @@ export default function TimelinePage() {
       const prefs = (assetRows ?? []).map(r => r.asset_type as string);
 
       // Compute the baseline plan the same way plan/results/page.tsx's defaultPlan
-      // does — fresh via generatePlan with the real financialPhase/debts — instead of
-      // reading the stored generated_plans row verbatim. The stored row can be stale
-      // relative to the current debt-gating logic if the user hasn't revisited
+      // does — fresh via generateBaselinePlan with the real financialPhase/debts —
+      // instead of reading the stored generated_plans row verbatim. The stored row can
+      // be stale relative to the current debt-gating logic if the user hasn't revisited
       // /dashboard/plan/results since those changed (savePlan is only ever called from
-      // that page). Deliberately no second (incomeAssumptions) argument, matching
-      // plan/results/page.tsx's generatePlan(inputs) call exactly — passing assumptions
-      // here was the confirmed sole divergence causing this baseline to compute a
-      // different rental year than Plan's. Falls back to the stored row only when
-      // there isn't enough data to call generatePlan (snapshot/profile/constraints
-      // missing).
+      // that page). Deliberately no incomeAssumptions, matching plan/results/page.tsx's
+      // generateBaselinePlan(inputs) call exactly — passing assumptions here was the
+      // confirmed sole divergence causing this baseline to compute a different rental
+      // year than Plan's. Falls back to the stored row only when there isn't enough
+      // data to call generateBaselinePlan (snapshot/profile/constraints missing).
       let plan: GeneratedPlan;
       if (snap && prof && cons) {
-        plan = generatePlan({
+        plan = generateBaselinePlan({
           freedomProfile: {
             visionText:    prof.vision_text ?? null,
             targetFreeAge: Number(prof.target_free_age),
@@ -605,7 +604,7 @@ export default function TimelinePage() {
       try {
         const inputs      = buildInputs(profile, snapshot, assetPrefs, constraints, levers, financialPhase, debts);
         const incomeAsmp  = buildIncomeAssumptions(assumptions, levers, currentYear);
-        const newPlan     = generatePlan(inputs, incomeAsmp);
+        const newPlan     = generatePreviewPlan(inputs, incomeAsmp);
         const completedTitles = execRows.filter(r => r.completed).map(r => r.title);
         const thisYearActions = execRows.filter(r => r.category === 'this_year' && !r.completed);
         const newMilestones   = calculateMilestones(

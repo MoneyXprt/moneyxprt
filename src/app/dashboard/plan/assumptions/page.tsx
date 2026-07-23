@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
-import { generatePlan } from '@/app/lib/planGenerator';
+import { generatePreviewPlan } from '@/app/lib/planGenerator';
 import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
@@ -296,7 +296,7 @@ export default function AssumptionsPage() {
       // Compute default plan for comparison baseline — reflects the user's saved
       // income-growth assumptions, so "without adjustments" is the real current plan,
       // not a fictional zero-growth scenario.
-      const defaultPlanResult = generatePlan({
+      const defaultPlanResult = generatePreviewPlan({
         freedomProfile: { visionText: p.visionText, targetFreeAge: p.targetFreeAge, freedomType: p.freedomType },
         freedomNumber: { monthlyTarget: p.monthlyTarget, portfolioTarget: p.portfolioTarget, breakdown: p.breakdown },
         snapshot: snapshotResult,
@@ -385,7 +385,7 @@ export default function AssumptionsPage() {
       firstRentalDelayYears,
       bonusGrowthRate:           bonusGrowthPct / 100,
     };
-    setLivePlan(generatePlan(inputs, assumptions));
+    setLivePlan(generatePreviewPlan(inputs, assumptions));
   }, [
     snapshot, profile, constraints, assetPrefs,
     capitalPerYearLever, freedomNumberLever, digitalPeakLever, firstRentalDelayYears,
