@@ -12,6 +12,11 @@ import type { Session } from '@supabase/supabase-js';
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
+// Live snapshot of a debt already tracked in the `debts` table, keyed by debt_type.
+// Presence of an entry means Section 4 shows that debt type read-only, sourced from
+// here instead of the editable financial_snapshots fields.
+interface TrackedDebt { balance: number; rate: number; payment: number }
+
 interface FormState {
   // S1 — Income
   w2Income: string; bonusIncome: string; bonusDefers: boolean; bonusDeferred: string;
@@ -253,6 +258,33 @@ function TextInput({ label, hint, value, onChange, placeholder = '' }: {
   );
 }
 
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <div className={`${BASE_INPUT} bg-gray-50 text-gray-500 cursor-not-allowed`}>{value}</div>
+    </div>
+  );
+}
+
+function TrackedInDebtsNote() {
+  return (
+    <p className="text-xs text-gray-400 leading-relaxed">
+      Tracked in Debts — log payments and see progress there.{' '}
+      <a href="/dashboard/debts" className="text-emerald-600 font-medium hover:underline">Go to Debts →</a>
+    </p>
+  );
+}
+
+function PaidOffNote() {
+  return (
+    <p className="text-xs text-emerald-600 font-medium leading-relaxed">
+      ✓ Paid off — see Debts page.{' '}
+      <a href="/dashboard/debts" className="text-emerald-600 underline">Go to Debts →</a>
+    </p>
+  );
+}
+
 function SelectInput({ label, value, onChange, children }: {
   label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
 }) {
@@ -391,6 +423,8 @@ export default function AuditPage() {
   const [form, setForm]             = useState<FormState>(EMPTY);
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
+  const [trackedDebts, setTrackedDebts] = useState<Record<string, TrackedDebt>>({});
+  const [paidOffDebtTypes, setPaidOffDebtTypes] = useState<Set<string>>(new Set());
 
   // ── Auth + pre-populate ──────────────────────────────────────────────────
   useEffect(() => {
@@ -422,6 +456,65 @@ export default function AuditPage() {
             }));
           }
         } catch { /* no bonus plan saved yet */ }
+        try {
+          // Debts already tracked in the `debts` table are the source of truth for
+          // Section 4 — fetched the same way syncDebtsTracker checks for existing rows
+          // (unique per user_id + debt_type). Active rows drive the read-only display;
+          // paid-off rows (is_active = false) are flagged separately so the section
+          // shows a "paid off" note instead of reopening editable inputs — otherwise the
+          // user could re-enter a balance for a debt that's already settled, creating a
+          // conflicting entry. Also overwrite the matching form fields with the live
+          // values so a later save doesn't push a stale rate/payment from this snapshot
+          // back over an edit made on the Debts page.
+          const { data: debtRows } = await sb
+            .from('debts')
+            .select('debt_type, current_balance, interest_rate, minimum_payment, is_active')
+            .eq('user_id', s.user.id);
+          if (debtRows && debtRows.length > 0) {
+            const map: Record<string, TrackedDebt> = {};
+            const paidOff = new Set<string>();
+            for (const d of debtRows) {
+              if (d.is_active) {
+                map[d.debt_type] = {
+                  balance: Number(d.current_balance),
+                  rate: Number(d.interest_rate),
+                  payment: Number(d.minimum_payment),
+                };
+              } else {
+                paidOff.add(d.debt_type);
+              }
+            }
+            setTrackedDebts(map);
+            setPaidOffDebtTypes(paidOff);
+            setForm(prev => ({
+              ...prev,
+              hasCarLoan:      prev.hasCarLoan      || !!map.car_loan      || paidOff.has('car_loan'),
+              hasStudentLoan:  prev.hasStudentLoan  || !!map.student_loan  || paidOff.has('student_loan'),
+              hasPersonalLoan: prev.hasPersonalLoan || !!map.personal_loan || paidOff.has('personal_loan'),
+              hasCreditCard:   prev.hasCreditCard   || !!map.credit_card   || paidOff.has('credit_card'),
+              hasBusinessLoan: prev.hasBusinessLoan || !!map.business_loan || paidOff.has('business_loan'),
+              hasOtherDebt:    prev.hasOtherDebt    || !!map.other         || paidOff.has('other'),
+              carLoanBalance:      map.car_loan      ? String(map.car_loan.balance)      : prev.carLoanBalance,
+              carLoanRate:         map.car_loan      ? String(map.car_loan.rate)         : prev.carLoanRate,
+              carLoanPayment:      map.car_loan      ? String(map.car_loan.payment)      : prev.carLoanPayment,
+              studentLoanBalance:  map.student_loan  ? String(map.student_loan.balance)  : prev.studentLoanBalance,
+              studentLoanRate:     map.student_loan  ? String(map.student_loan.rate)     : prev.studentLoanRate,
+              studentLoanPayment:  map.student_loan  ? String(map.student_loan.payment)  : prev.studentLoanPayment,
+              personalLoanBalance: map.personal_loan ? String(map.personal_loan.balance) : prev.personalLoanBalance,
+              personalLoanRate:    map.personal_loan ? String(map.personal_loan.rate)    : prev.personalLoanRate,
+              personalLoanPayment: map.personal_loan ? String(map.personal_loan.payment) : prev.personalLoanPayment,
+              creditCardBalance:   map.credit_card   ? String(map.credit_card.balance)   : prev.creditCardBalance,
+              creditCardRate:      map.credit_card   ? String(map.credit_card.rate)      : prev.creditCardRate,
+              creditCardPayment:   map.credit_card   ? String(map.credit_card.payment)   : prev.creditCardPayment,
+              businessLoanBalance: map.business_loan ? String(map.business_loan.balance) : prev.businessLoanBalance,
+              businessLoanRate:    map.business_loan ? String(map.business_loan.rate)    : prev.businessLoanRate,
+              businessLoanPayment: map.business_loan ? String(map.business_loan.payment) : prev.businessLoanPayment,
+              otherDebtBalance:    map.other         ? String(map.other.balance)         : prev.otherDebtBalance,
+              otherDebtRate:       map.other         ? String(map.other.rate)            : prev.otherDebtRate,
+              otherDebtPayment:    map.other         ? String(map.other.payment)         : prev.otherDebtPayment,
+            }));
+          }
+        } catch { /* no debts tracked yet */ }
       }
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -1082,70 +1175,126 @@ export default function AuditPage() {
               {form.hasCarLoan && (
                 <div className="pl-4 border-l-2 border-blue-100 space-y-3">
                   <Divider label="Car Loan" />
-                  <DollarInput label="Balance" value={form.carLoanBalance} onChange={v => set('carLoanBalance', v)} />
-                  <SuffixInput label="Interest rate" suffix="% APR" value={form.carLoanRate} onChange={v => set('carLoanRate', v)} placeholder="6.5" />
-                  <DollarInput label="Minimum monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
-                  <DollarInput label="Original loan amount (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.carLoanOriginalBalance} onChange={v => set('carLoanOriginalBalance', v)} />
+                  {trackedDebts.car_loan ? (<>
+                    <ReadOnlyField label="Balance" value={`$${Math.round(trackedDebts.car_loan.balance).toLocaleString()}`} />
+                    <ReadOnlyField label="Interest rate" value={`${trackedDebts.car_loan.rate.toFixed(2)}% APR`} />
+                    <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.car_loan.payment).toLocaleString()}`} />
+                    <TrackedInDebtsNote />
+                  </>) : paidOffDebtTypes.has('car_loan') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <DollarInput label="Balance" value={form.carLoanBalance} onChange={v => set('carLoanBalance', v)} />
+                    <SuffixInput label="Interest rate" suffix="% APR" value={form.carLoanRate} onChange={v => set('carLoanRate', v)} placeholder="6.5" />
+                    <DollarInput label="Minimum monthly payment" value={form.carLoanPayment} onChange={v => set('carLoanPayment', v)} />
+                    <DollarInput label="Original loan amount (if different from current balance)"
+                      hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                      value={form.carLoanOriginalBalance} onChange={v => set('carLoanOriginalBalance', v)} />
+                  </>)}
                 </div>
               )}
               {form.hasStudentLoan && (
                 <div className="pl-4 border-l-2 border-purple-100 space-y-3">
                   <Divider label="Student Loans" />
-                  <DollarInput label="Total balance" value={form.studentLoanBalance} onChange={v => set('studentLoanBalance', v)} />
-                  <SuffixInput label="Average interest rate" suffix="% APR" value={form.studentLoanRate} onChange={v => set('studentLoanRate', v)} placeholder="6.0" />
-                  <DollarInput label="Minimum monthly payment" value={form.studentLoanPayment} onChange={v => set('studentLoanPayment', v)} />
-                  <DollarInput label="Original loan amount (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.studentLoanOriginalBalance} onChange={v => set('studentLoanOriginalBalance', v)} />
+                  {trackedDebts.student_loan ? (<>
+                    <ReadOnlyField label="Total balance" value={`$${Math.round(trackedDebts.student_loan.balance).toLocaleString()}`} />
+                    <ReadOnlyField label="Average interest rate" value={`${trackedDebts.student_loan.rate.toFixed(2)}% APR`} />
+                    <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.student_loan.payment).toLocaleString()}`} />
+                    <TrackedInDebtsNote />
+                  </>) : paidOffDebtTypes.has('student_loan') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <DollarInput label="Total balance" value={form.studentLoanBalance} onChange={v => set('studentLoanBalance', v)} />
+                    <SuffixInput label="Average interest rate" suffix="% APR" value={form.studentLoanRate} onChange={v => set('studentLoanRate', v)} placeholder="6.0" />
+                    <DollarInput label="Minimum monthly payment" value={form.studentLoanPayment} onChange={v => set('studentLoanPayment', v)} />
+                    <DollarInput label="Original loan amount (if different from current balance)"
+                      hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                      value={form.studentLoanOriginalBalance} onChange={v => set('studentLoanOriginalBalance', v)} />
+                  </>)}
                 </div>
               )}
               {form.hasPersonalLoan && (
                 <div className="pl-4 border-l-2 border-orange-100 space-y-3">
                   <Divider label="Personal Loan" />
-                  <DollarInput label="Balance" value={form.personalLoanBalance} onChange={v => set('personalLoanBalance', v)} />
-                  <SuffixInput label="Interest rate" suffix="% APR" value={form.personalLoanRate} onChange={v => set('personalLoanRate', v)} placeholder="9.0" />
-                  <DollarInput label="Minimum monthly payment" value={form.personalLoanPayment} onChange={v => set('personalLoanPayment', v)} />
-                  <DollarInput label="Original loan amount (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.personalLoanOriginalBalance} onChange={v => set('personalLoanOriginalBalance', v)} />
+                  {trackedDebts.personal_loan ? (<>
+                    <ReadOnlyField label="Balance" value={`$${Math.round(trackedDebts.personal_loan.balance).toLocaleString()}`} />
+                    <ReadOnlyField label="Interest rate" value={`${trackedDebts.personal_loan.rate.toFixed(2)}% APR`} />
+                    <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.personal_loan.payment).toLocaleString()}`} />
+                    <TrackedInDebtsNote />
+                  </>) : paidOffDebtTypes.has('personal_loan') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <DollarInput label="Balance" value={form.personalLoanBalance} onChange={v => set('personalLoanBalance', v)} />
+                    <SuffixInput label="Interest rate" suffix="% APR" value={form.personalLoanRate} onChange={v => set('personalLoanRate', v)} placeholder="9.0" />
+                    <DollarInput label="Minimum monthly payment" value={form.personalLoanPayment} onChange={v => set('personalLoanPayment', v)} />
+                    <DollarInput label="Original loan amount (if different from current balance)"
+                      hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                      value={form.personalLoanOriginalBalance} onChange={v => set('personalLoanOriginalBalance', v)} />
+                  </>)}
                 </div>
               )}
               {form.hasCreditCard && (
                 <div className="pl-4 border-l-2 border-red-100 space-y-3">
                   <Divider label="Credit Card Debt" />
-                  <DollarInput label="Total balance across all cards" value={form.creditCardBalance} onChange={v => set('creditCardBalance', v)} />
-                  <SuffixInput label="Average interest rate" suffix="% APR" value={form.creditCardRate} onChange={v => set('creditCardRate', v)} placeholder="22" />
-                  <DollarInput label="Minimum monthly payment" value={form.creditCardPayment} onChange={v => set('creditCardPayment', v)} />
-                  <DollarInput label="Original balance (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.creditCardOriginalBalance} onChange={v => set('creditCardOriginalBalance', v)} />
+                  {trackedDebts.credit_card ? (<>
+                    <ReadOnlyField label="Total balance across all cards" value={`$${Math.round(trackedDebts.credit_card.balance).toLocaleString()}`} />
+                    <ReadOnlyField label="Average interest rate" value={`${trackedDebts.credit_card.rate.toFixed(2)}% APR`} />
+                    <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.credit_card.payment).toLocaleString()}`} />
+                    <TrackedInDebtsNote />
+                  </>) : paidOffDebtTypes.has('credit_card') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <DollarInput label="Total balance across all cards" value={form.creditCardBalance} onChange={v => set('creditCardBalance', v)} />
+                    <SuffixInput label="Average interest rate" suffix="% APR" value={form.creditCardRate} onChange={v => set('creditCardRate', v)} placeholder="22" />
+                    <DollarInput label="Minimum monthly payment" value={form.creditCardPayment} onChange={v => set('creditCardPayment', v)} />
+                    <DollarInput label="Original balance (if different from current balance)"
+                      hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                      value={form.creditCardOriginalBalance} onChange={v => set('creditCardOriginalBalance', v)} />
+                  </>)}
                 </div>
               )}
               {form.hasBusinessLoan && (
                 <div className="pl-4 border-l-2 border-gray-100 space-y-3">
                   <Divider label="Business Loan" />
-                  <DollarInput label="Balance" value={form.businessLoanBalance} onChange={v => set('businessLoanBalance', v)} />
-                  <SuffixInput label="Interest rate" suffix="% APR" value={form.businessLoanRate} onChange={v => set('businessLoanRate', v)} placeholder="7.0" />
-                  <DollarInput label="Minimum monthly payment" value={form.businessLoanPayment} onChange={v => set('businessLoanPayment', v)} />
-                  <DollarInput label="Original loan amount (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.businessLoanOriginalBalance} onChange={v => set('businessLoanOriginalBalance', v)} />
+                  {trackedDebts.business_loan ? (<>
+                    <ReadOnlyField label="Balance" value={`$${Math.round(trackedDebts.business_loan.balance).toLocaleString()}`} />
+                    <ReadOnlyField label="Interest rate" value={`${trackedDebts.business_loan.rate.toFixed(2)}% APR`} />
+                    <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.business_loan.payment).toLocaleString()}`} />
+                    <TrackedInDebtsNote />
+                  </>) : paidOffDebtTypes.has('business_loan') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <DollarInput label="Balance" value={form.businessLoanBalance} onChange={v => set('businessLoanBalance', v)} />
+                    <SuffixInput label="Interest rate" suffix="% APR" value={form.businessLoanRate} onChange={v => set('businessLoanRate', v)} placeholder="7.0" />
+                    <DollarInput label="Minimum monthly payment" value={form.businessLoanPayment} onChange={v => set('businessLoanPayment', v)} />
+                    <DollarInput label="Original loan amount (if different from current balance)"
+                      hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                      value={form.businessLoanOriginalBalance} onChange={v => set('businessLoanOriginalBalance', v)} />
+                  </>)}
                 </div>
               )}
               {form.hasOtherDebt && (
                 <div className="pl-4 border-l-2 border-teal-100 space-y-3">
                   <Divider label="Other Debt" />
-                  <TextInput label="What is this debt for?"
-                    hint="E.g. home improvement, medical, pool loan — anything that doesn't fit the categories above."
-                    placeholder="Home improvement loan" value={form.otherDebtLabel} onChange={v => set('otherDebtLabel', v)} />
-                  <DollarInput label="Balance" value={form.otherDebtBalance} onChange={v => set('otherDebtBalance', v)} />
-                  <SuffixInput label="Interest rate" suffix="% APR" value={form.otherDebtRate} onChange={v => set('otherDebtRate', v)} placeholder="8.0" />
-                  <DollarInput label="Minimum monthly payment" value={form.otherDebtPayment} onChange={v => set('otherDebtPayment', v)} />
-                  <DollarInput label="Original loan amount (if different from current balance)"
-                    hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
-                    value={form.otherDebtOriginalBalance} onChange={v => set('otherDebtOriginalBalance', v)} />
+                  {paidOffDebtTypes.has('other') ? (
+                    <PaidOffNote />
+                  ) : (<>
+                    <TextInput label="What is this debt for?"
+                      hint="E.g. home improvement, medical, pool loan — anything that doesn't fit the categories above."
+                      placeholder="Home improvement loan" value={form.otherDebtLabel} onChange={v => set('otherDebtLabel', v)} />
+                    {trackedDebts.other ? (<>
+                      <ReadOnlyField label="Balance" value={`$${Math.round(trackedDebts.other.balance).toLocaleString()}`} />
+                      <ReadOnlyField label="Interest rate" value={`${trackedDebts.other.rate.toFixed(2)}% APR`} />
+                      <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.other.payment).toLocaleString()}`} />
+                      <TrackedInDebtsNote />
+                    </>) : (<>
+                      <DollarInput label="Balance" value={form.otherDebtBalance} onChange={v => set('otherDebtBalance', v)} />
+                      <SuffixInput label="Interest rate" suffix="% APR" value={form.otherDebtRate} onChange={v => set('otherDebtRate', v)} placeholder="8.0" />
+                      <DollarInput label="Minimum monthly payment" value={form.otherDebtPayment} onChange={v => set('otherDebtPayment', v)} />
+                      <DollarInput label="Original loan amount (if different from current balance)"
+                        hint="Optional — used only for the debt tracker's records. Leave blank to use the current balance."
+                        value={form.otherDebtOriginalBalance} onChange={v => set('otherDebtOriginalBalance', v)} />
+                    </>)}
+                  </>)}
                 </div>
               )}
             </>)}
