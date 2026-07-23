@@ -423,6 +423,7 @@ export default function AuditPage() {
   const [form, setForm]             = useState<FormState>(EMPTY);
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState(false);
   const [trackedDebts, setTrackedDebts] = useState<Record<string, TrackedDebt>>({});
   const [paidOffDebtTypes, setPaidOffDebtTypes] = useState<Set<string>>(new Set());
 
@@ -544,7 +545,7 @@ export default function AuditPage() {
   };
 
   const handleSubmit = async () => {
-    setSaving(true); setSaveError(null);
+    setSaving(true); setSaveError(null); setSyncWarning(false);
     try {
       const essential     = n(form.essentialMonthlySpend);
       const discretionary = n(form.discretionaryMonthlySpend);
@@ -652,14 +653,22 @@ export default function AuditPage() {
         if (bonusPlanError) throw bonusPlanError;
       }
 
-      // Silent debt-tracker sync — invisible background behavior, no user-facing
-      // message. A failure here must never block the main Audit save/redirect, so
-      // it's deliberately swallowed (logged only) rather than rethrown.
+      // Background sync — never blocks the main Audit save, so each failure is caught
+      // individually rather than rethrown. Failures are still surfaced via syncWarning
+      // (a visible banner) rather than being console-only, since a failed sync means
+      // capital_per_year, financial_phase, or a debt row can go stale in the database
+      // with no other indication anything went wrong. The auto-redirect below is
+      // skipped in that case — auto-advancing past a warning the user hasn't had a
+      // chance to read would sweep it away before they could see it — so they stay on
+      // this page and continue manually (retry the save, or the banner's own link).
+      let anySyncFailed = false;
+
       if (session) {
         try {
           await syncDebtsTracker(session.user.id);
         } catch (err) {
           console.warn('syncDebtsTracker failed:', err instanceof Error ? err.message : err);
+          anySyncFailed = true;
         }
 
         // Recompute financial phase — run after syncDebtsTracker so it reflects any
@@ -669,6 +678,7 @@ export default function AuditPage() {
           await syncFinancialPhase(getBrowserSupabaseClient(), session.user.id);
         } catch (err) {
           console.warn('syncFinancialPhase failed:', err instanceof Error ? err.message : err);
+          anySyncFailed = true;
         }
 
         // Recompute capital_per_year from the snapshot just saved above — previously
@@ -678,7 +688,14 @@ export default function AuditPage() {
           await syncCapitalPerYear(getBrowserSupabaseClient(), session.user.id);
         } catch (err) {
           console.warn('syncCapitalPerYear failed:', err instanceof Error ? err.message : err);
+          anySyncFailed = true;
         }
+      }
+
+      if (anySyncFailed) {
+        setSyncWarning(true);
+        setSaving(false);
+        return;
       }
 
       router.push('/dashboard/audit/snapshot-summary' + (freshParam ? '?fresh=true' : ''));
@@ -1354,6 +1371,28 @@ export default function AuditPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <p className="text-xs text-red-700">{saveError}</p>
+              </div>
+            )}
+
+            {/* Non-blocking sync warning — the snapshot itself saved fine, but one of the
+                background syncs (debt tracker / financial phase / deployable capital)
+                failed, so shown as a distinct amber warning rather than the red save-error.
+                The auto-redirect to snapshot-summary is skipped when this is showing (see
+                handleSubmit), so the user isn't auto-advanced past a warning they haven't
+                read — they can retry the save, or continue on manually via the link below. */}
+            {syncWarning && (
+              <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
+                <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-xs text-amber-700">
+                  <p>Your snapshot saved, but some background updates (debt tracking / financial phase / deployable capital) didn&apos;t complete — try saving again in a moment.</p>
+                  <button type="button"
+                    onClick={() => router.push('/dashboard/audit/snapshot-summary' + (freshParam ? '?fresh=true' : ''))}
+                    className="mt-1.5 font-semibold underline hover:no-underline">
+                    Continue to summary anyway →
+                  </button>
+                </div>
               </div>
             )}
 
