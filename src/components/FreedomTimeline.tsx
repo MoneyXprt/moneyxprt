@@ -184,7 +184,7 @@ function MobileTimeline({ milestones, currentYear, isRecalculating }: Props) {
               flexShrink: 0,
               marginLeft: circleMarginLeft,
               width: sz, height: sz,
-              position: 'relative', zIndex: 10,
+              position: 'relative', zIndex: 1,
               borderRadius: '50%',
               background: col,
               border: isFree ? `2.5px solid ${GOLD}` : 'none',
