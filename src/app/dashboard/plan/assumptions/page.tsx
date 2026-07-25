@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
-import { generatePreviewPlan } from '@/app/lib/planGenerator';
+import { generateBaselinePlan, generatePreviewPlan } from '@/app/lib/planGenerator';
 import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
@@ -259,10 +259,10 @@ export default function AssumptionsPage() {
       // Pre-fill income projections from saved assumptions, or defaults — each field
       // checks its own column for null, not just whether the row exists, since a row
       // can have some columns set and others null (e.g. seeded outside this page's own
-      // handleSave, which always writes every field together). Computed before
-      // defaultPlan below so defaultPlan can use the same real saved projections
-      // instead of assuming zero income growth — "without adjustments" should reflect
-      // the user's actual current plan, not a fictional no-growth scenario.
+      // handleSave, which always writes every field together). These feed the levers'
+      // initial values below — defaultPlan itself (below) deliberately does NOT use
+      // them, so "without adjustments" means the true no-growth baseline everywhere,
+      // matching plan/results/page.tsx exactly.
       const biz12  = savedAssumptions?.business_monthly_12 != null ? Number(savedAssumptions.business_monthly_12) : snapshotResult.businessRevenue / 12;
       const biz36  = savedAssumptions?.business_monthly_36 != null ? Number(savedAssumptions.business_monthly_36) : (snapshotResult.businessRevenue / 12) * 2;
       const sp12   = savedAssumptions?.spouse_business_monthly_12 != null ? Number(savedAssumptions.spouse_business_monthly_12) : 500;
@@ -281,22 +281,12 @@ export default function AssumptionsPage() {
         ? Number(savedAssumptions.first_rental_delay_years)
         : null;
 
-      const defaultAssumptions: IncomeAssumptions = {
-        businessMonthly12:         biz12,
-        businessMonthly36:         biz36,
-        spouseBusinessMonthly12:   sp12,
-        spouseBusinessMonthly36:   sp36,
-        digitalProductsMonthly12:  dig12,
-        digitalProductsMonthly36:  dig36,
-        digitalProductsPeak:       peak,
-        firstRentalDelayYears:     savedDelay ?? 0,
-        bonusGrowthRate:           bonusPct / 100,
-      };
-
-      // Compute default plan for comparison baseline — reflects the user's saved
-      // income-growth assumptions, so "without adjustments" is the real current plan,
-      // not a fictional zero-growth scenario.
-      const defaultPlanResult = generatePreviewPlan({
+      // Compute default plan for comparison baseline — the true no-assumptions
+      // baseline (current reality only), matching plan/results/page.tsx's baseline
+      // exactly. Deliberately does NOT pass the user's saved income-growth
+      // assumptions — otherwise "without adjustments" would mean different things on
+      // different pages.
+      const defaultPlanResult = generateBaselinePlan({
         freedomProfile: { visionText: p.visionText, targetFreeAge: p.targetFreeAge, freedomType: p.freedomType },
         freedomNumber: { monthlyTarget: p.monthlyTarget, portfolioTarget: p.portfolioTarget, breakdown: p.breakdown },
         snapshot: snapshotResult,
@@ -304,7 +294,7 @@ export default function AssumptionsPage() {
         constraints: { capitalPerYear: c.capitalPerYear, hoursPerWeek: c.hoursPerWeek, riskTolerance: c.riskTolerance, hardConstraints: c.hardConstraints },
         financialPhase: fetchedPhase,
         debts: fetchedDebts,
-      }, defaultAssumptions);
+      });
       setDefaultPlan(defaultPlanResult);
 
       // Initialize levers from DB data
@@ -314,7 +304,8 @@ export default function AssumptionsPage() {
       setFreedomNumberLever(initFreedom);
 
       // Derive default rental delay from roadmap (used only as the live lever's
-      // fallback when nothing's saved — defaultPlan itself already used savedDelay ?? 0).
+      // fallback when nothing's saved — defaultPlan itself now always uses 0 delay,
+      // since generateBaselinePlan passes no incomeAssumptions at all).
       const firstRentalRow = defaultPlanResult.assetRoadmap.find(
         r => r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental',
       );
