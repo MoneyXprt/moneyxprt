@@ -225,7 +225,7 @@ function NextActionCard({ text, annualValue, showLink }: {
         )}
       </div>
       <p className="text-sm text-gray-800 leading-relaxed">{text}</p>
-      {annualValue && annualValue > 0 && (
+      {annualValue != null && annualValue > 0 && (
         <p className="mt-1.5 text-xs font-bold text-emerald-600 tabular-nums">{fmt(annualValue)}/yr</p>
       )}
     </div>
@@ -476,10 +476,12 @@ function REPSTracker({ hoursLogged }: { hoursLogged: number }) {
 
 // ─── Quick actions ────────────────────────────────────────────────────────────
 
-function QuickActions() {
+function QuickActions({ repsRelevant }: { repsRelevant: boolean }) {
   const actions = [
     { label: 'Update numbers',     sub: 'Keep plan current',          href: '/dashboard/audit',                icon: '✏️' },
-    { label: 'Log REPS hours',     sub: 'Material participation',      href: '/dashboard/logs',                 icon: '⏱️' },
+    // Same gating as the REPS Hours widget elsewhere on this page — hidden entirely
+    // when REPS isn't relevant yet (see computeRepsRelevance in loadData).
+    ...(repsRelevant ? [{ label: 'Log REPS hours', sub: 'Material participation', href: '/dashboard/logs', icon: '⏱️' }] : []),
     { label: 'Full plan',          sub: 'Roadmap & tax',               href: '/dashboard/plan/results',         icon: '📋' },
     { label: 'Assumptions',        sub: 'Fine-tune projections',       href: '/dashboard/plan/assumptions',     icon: '🎛️' },
   ];
@@ -1066,7 +1068,7 @@ export default function DashboardHome() {
             {/* Quick actions */}
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 px-0.5">Quick actions</p>
-              <QuickActions />
+              <QuickActions repsRelevant={repsRelevant} />
               <Link href="/dashboard/adjust"
                 className="mt-3 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition py-2">
                 Something changed in my financial situation →
