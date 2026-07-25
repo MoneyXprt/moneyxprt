@@ -170,9 +170,9 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
             {tableRows.map((row, i) => {
               if ('isMilestone' in row) {
                 return (
-                  <tr key={row.key} className="bg-amber-50/60 border-b border-amber-100">
+                  <tr key={row.key} className="bg-emerald-50/60 border-b border-emerald-100">
                     <td colSpan={5} className="px-4 py-1.5">
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-wide">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wide">
                         <span style={{ fontSize: '11px' }}>★</span>
                         {row.label}
                       </span>
@@ -211,10 +211,12 @@ function RoadmapTable({ rows, freedomTarget }: { rows: AssetRoadmapRow[]; freedo
                       )}
                     </div>
                   </td>
-                  <td className={`px-4 py-3 text-right tabular-nums whitespace-nowrap font-semibold ${
-                    row.estimatedMonthlyIncomeAdded > 0 ? 'text-emerald-600' : 'text-gray-300'
+                  <td className={`px-4 py-3 text-right whitespace-nowrap ${
+                    row.estimatedMonthlyIncomeAdded > 0
+                      ? 'tabular-nums font-semibold text-emerald-600'
+                      : 'text-gray-500 italic'
                   }`}>
-                    {row.estimatedMonthlyIncomeAdded > 0 ? `+${fmt(row.estimatedMonthlyIncomeAdded)}` : '—'}
+                    {row.estimatedMonthlyIncomeAdded > 0 ? `+${fmt(row.estimatedMonthlyIncomeAdded)}` : 'Accumulating'}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap text-gray-700 font-medium">
                     {fmt(row.cumulativeMonthlyIncome)}

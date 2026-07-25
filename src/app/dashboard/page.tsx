@@ -267,7 +267,7 @@ function FreedomScoreCard({ breakdown }: { breakdown: FreedomScoreBreakdown }) {
         </div>
 
         {/* Breakdown bars */}
-        <div className="flex-1 space-y-2.5">
+        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2.5">
           {([
             { label: 'Plan Setup',   score: plan,       max: 20 },
             { label: 'Strategies',   score: strategies, max: 30 },
