@@ -767,7 +767,7 @@ export default function PlanResultsPage() {
 
       {/* Plan tab bar */}
       <div className="bg-white border-b border-gray-100 sticky top-14 z-10">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 flex items-center justify-between">
           <div className="flex">
             {([
               { label: 'Plan',        href: '/dashboard/plan/results' },
@@ -784,6 +784,10 @@ export default function PlanResultsPage() {
               </Link>
             ))}
           </div>
+          <Link href="/dashboard/cpa-report"
+            className="text-xs font-semibold text-gray-400 hover:text-gray-700 transition whitespace-nowrap">
+            Export CPA Packet →
+          </Link>
         </div>
       </div>
 
