@@ -379,16 +379,18 @@ function ThreatHero({ cashValue, projectedValue, snapshotDate }: { cashValue: nu
 function FirstAuditBanner({ cashValue, projectedValue, onDismiss }: { cashValue: number; projectedValue: number; onDismiss: () => void }) {
   const tenYear = Math.round(cashValue * 14.78);
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 relative">
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Dismiss"
-        className="absolute top-3 right-3 text-amber-400 hover:text-amber-700 transition text-sm leading-none"
-      >
-        ✕
-      </button>
-      <p className="text-sm font-bold text-amber-900 pr-6">Your tax situation in plain language</p>
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-bold text-amber-900">Your tax situation in plain language</p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="text-amber-400 hover:text-amber-700 transition text-sm leading-none shrink-0"
+        >
+          ✕
+        </button>
+      </div>
       <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
         At your income level, the default path costs you{' '}
         <strong>{fmt(cashValue)}</strong> in avoidable taxes every year (cash tax savings this year). That&apos;s{' '}
