@@ -140,11 +140,17 @@ export async function buildCpaReportData(
   const implementedStrategies = completedActions.map(action => {
     const strategyId     = (action.strategy_id as string) ?? '';
     const strategyResult = allStrategies.find(s => s.id === strategyId);
+    // Prefer the action's own stored description — the historically accurate text from
+    // when the strategy was actually implemented — over strategyResult.reason, which is
+    // re-evaluated against today's snapshot and can contradict a since-changed eligibility
+    // state (e.g. "No business entity on file" for a strategy completed while one existed).
+    // Only fall back to the live reason when nothing was stored at completion time.
+    const actionDescription = ((action.description as string | null) ?? '').trim();
     return {
       name: strategyResult?.name ?? (action.title as string),
       ircSection: IRC_SECTIONS[strategyId] ?? '',
       estimatedAnnualValue: Number(action.estimated_annual_value ?? strategyResult?.estimatedAnnualValue ?? 0),
-      description: strategyResult?.reason ?? (action.description as string) ?? '',
+      description: actionDescription !== '' ? actionDescription : (strategyResult?.reason ?? ''),
       documentationRequired:
         DOCUMENTATION_REQUIREMENTS[strategyId] ?? DOCUMENTATION_REQUIREMENTS['__fallback__'],
       dateImplemented: action.completed_at

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import PDFDocument from 'pdfkit';
 import { buildCpaReportData } from '@/app/lib/cpaReportGenerator';
 import type { CpaReportData } from '@/app/lib/cpaReportGenerator';
 
@@ -14,9 +15,6 @@ function fmtCurrency(n: number): string {
 // ─── PDF generation ───────────────────────────────────────────────────────────
 
 function generatePDF(data: CpaReportData): Promise<Buffer> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PDFDocument = require('pdfkit') as typeof import('pdfkit');
-
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'LETTER', margin: 72 });
     const chunks: Buffer[] = [];
