@@ -489,30 +489,34 @@ export default function AuditPage() {
             setPaidOffDebtTypes(paidOff);
             setForm(prev => ({
               ...prev,
-              hasCarLoan:      prev.hasCarLoan      || !!map.car_loan      || paidOff.has('car_loan'),
-              hasStudentLoan:  prev.hasStudentLoan  || !!map.student_loan  || paidOff.has('student_loan'),
-              hasPersonalLoan: prev.hasPersonalLoan || !!map.personal_loan || paidOff.has('personal_loan'),
-              hasCreditCard:   prev.hasCreditCard   || !!map.credit_card   || paidOff.has('credit_card'),
-              hasBusinessLoan: prev.hasBusinessLoan || !!map.business_loan || paidOff.has('business_loan'),
-              hasOtherDebt:    prev.hasOtherDebt    || !!map.other         || paidOff.has('other'),
-              carLoanBalance:      map.car_loan      ? String(map.car_loan.balance)      : prev.carLoanBalance,
-              carLoanRate:         map.car_loan      ? String(map.car_loan.rate)         : prev.carLoanRate,
-              carLoanPayment:      map.car_loan      ? String(map.car_loan.payment)      : prev.carLoanPayment,
-              studentLoanBalance:  map.student_loan  ? String(map.student_loan.balance)  : prev.studentLoanBalance,
-              studentLoanRate:     map.student_loan  ? String(map.student_loan.rate)     : prev.studentLoanRate,
-              studentLoanPayment:  map.student_loan  ? String(map.student_loan.payment)  : prev.studentLoanPayment,
-              personalLoanBalance: map.personal_loan ? String(map.personal_loan.balance) : prev.personalLoanBalance,
-              personalLoanRate:    map.personal_loan ? String(map.personal_loan.rate)    : prev.personalLoanRate,
-              personalLoanPayment: map.personal_loan ? String(map.personal_loan.payment) : prev.personalLoanPayment,
-              creditCardBalance:   map.credit_card   ? String(map.credit_card.balance)   : prev.creditCardBalance,
-              creditCardRate:      map.credit_card   ? String(map.credit_card.rate)      : prev.creditCardRate,
-              creditCardPayment:   map.credit_card   ? String(map.credit_card.payment)   : prev.creditCardPayment,
-              businessLoanBalance: map.business_loan ? String(map.business_loan.balance) : prev.businessLoanBalance,
-              businessLoanRate:    map.business_loan ? String(map.business_loan.rate)    : prev.businessLoanRate,
-              businessLoanPayment: map.business_loan ? String(map.business_loan.payment) : prev.businessLoanPayment,
-              otherDebtBalance:    map.other         ? String(map.other.balance)         : prev.otherDebtBalance,
-              otherDebtRate:       map.other         ? String(map.other.rate)            : prev.otherDebtRate,
-              otherDebtPayment:    map.other         ? String(map.other.payment)         : prev.otherDebtPayment,
+              // Paid-off types are forced false (not just left alone) — otherwise a
+              // stale true from a prior load would keep feeding a stale, non-zeroed
+              // balance into financial_snapshots on save. Active-tracked types are
+              // forced true as before.
+              hasCarLoan:      paidOff.has('car_loan')      ? false : (prev.hasCarLoan      || !!map.car_loan),
+              hasStudentLoan:  paidOff.has('student_loan')  ? false : (prev.hasStudentLoan  || !!map.student_loan),
+              hasPersonalLoan: paidOff.has('personal_loan') ? false : (prev.hasPersonalLoan || !!map.personal_loan),
+              hasCreditCard:   paidOff.has('credit_card')   ? false : (prev.hasCreditCard   || !!map.credit_card),
+              hasBusinessLoan: paidOff.has('business_loan') ? false : (prev.hasBusinessLoan || !!map.business_loan),
+              hasOtherDebt:    paidOff.has('other')         ? false : (prev.hasOtherDebt    || !!map.other),
+              carLoanBalance:      map.car_loan      ? String(map.car_loan.balance)      : paidOff.has('car_loan')      ? '0' : prev.carLoanBalance,
+              carLoanRate:         map.car_loan      ? String(map.car_loan.rate)         : paidOff.has('car_loan')      ? '0' : prev.carLoanRate,
+              carLoanPayment:      map.car_loan      ? String(map.car_loan.payment)      : paidOff.has('car_loan')      ? '0' : prev.carLoanPayment,
+              studentLoanBalance:  map.student_loan  ? String(map.student_loan.balance)  : paidOff.has('student_loan')  ? '0' : prev.studentLoanBalance,
+              studentLoanRate:     map.student_loan  ? String(map.student_loan.rate)     : paidOff.has('student_loan')  ? '0' : prev.studentLoanRate,
+              studentLoanPayment:  map.student_loan  ? String(map.student_loan.payment)  : paidOff.has('student_loan')  ? '0' : prev.studentLoanPayment,
+              personalLoanBalance: map.personal_loan ? String(map.personal_loan.balance) : paidOff.has('personal_loan') ? '0' : prev.personalLoanBalance,
+              personalLoanRate:    map.personal_loan ? String(map.personal_loan.rate)    : paidOff.has('personal_loan') ? '0' : prev.personalLoanRate,
+              personalLoanPayment: map.personal_loan ? String(map.personal_loan.payment) : paidOff.has('personal_loan') ? '0' : prev.personalLoanPayment,
+              creditCardBalance:   map.credit_card   ? String(map.credit_card.balance)   : paidOff.has('credit_card')   ? '0' : prev.creditCardBalance,
+              creditCardRate:      map.credit_card   ? String(map.credit_card.rate)      : paidOff.has('credit_card')   ? '0' : prev.creditCardRate,
+              creditCardPayment:   map.credit_card   ? String(map.credit_card.payment)   : paidOff.has('credit_card')   ? '0' : prev.creditCardPayment,
+              businessLoanBalance: map.business_loan ? String(map.business_loan.balance) : paidOff.has('business_loan') ? '0' : prev.businessLoanBalance,
+              businessLoanRate:    map.business_loan ? String(map.business_loan.rate)    : paidOff.has('business_loan') ? '0' : prev.businessLoanRate,
+              businessLoanPayment: map.business_loan ? String(map.business_loan.payment) : paidOff.has('business_loan') ? '0' : prev.businessLoanPayment,
+              otherDebtBalance:    map.other         ? String(map.other.balance)         : paidOff.has('other')         ? '0' : prev.otherDebtBalance,
+              otherDebtRate:       map.other         ? String(map.other.rate)            : paidOff.has('other')         ? '0' : prev.otherDebtRate,
+              otherDebtPayment:    map.other         ? String(map.other.payment)         : paidOff.has('other')         ? '0' : prev.otherDebtPayment,
             }));
           }
         } catch { /* no debts tracked yet */ }
@@ -1183,13 +1187,14 @@ export default function AuditPage() {
                 </div>
               </div>
 
-              {!form.hasCarLoan && !form.hasStudentLoan && !form.hasPersonalLoan && !form.hasCreditCard && !form.hasBusinessLoan && !form.hasOtherDebt && (
+              {!form.hasCarLoan && !form.hasStudentLoan && !form.hasPersonalLoan && !form.hasCreditCard && !form.hasBusinessLoan && !form.hasOtherDebt
+                && paidOffDebtTypes.size === 0 && (
                 <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3">
                   <p className="text-xs text-emerald-700 font-medium">No debt selected — tap any that apply above, or continue to the next section.</p>
                 </div>
               )}
 
-              {form.hasCarLoan && (
+              {(form.hasCarLoan || paidOffDebtTypes.has('car_loan')) && (
                 <div className="pl-4 border-l-2 border-blue-100 space-y-3">
                   <Divider label="Car Loan" />
                   {trackedDebts.car_loan ? (<>
@@ -1209,7 +1214,7 @@ export default function AuditPage() {
                   </>)}
                 </div>
               )}
-              {form.hasStudentLoan && (
+              {(form.hasStudentLoan || paidOffDebtTypes.has('student_loan')) && (
                 <div className="pl-4 border-l-2 border-purple-100 space-y-3">
                   <Divider label="Student Loans" />
                   {trackedDebts.student_loan ? (<>
@@ -1229,7 +1234,7 @@ export default function AuditPage() {
                   </>)}
                 </div>
               )}
-              {form.hasPersonalLoan && (
+              {(form.hasPersonalLoan || paidOffDebtTypes.has('personal_loan')) && (
                 <div className="pl-4 border-l-2 border-orange-100 space-y-3">
                   <Divider label="Personal Loan" />
                   {trackedDebts.personal_loan ? (<>
@@ -1249,7 +1254,7 @@ export default function AuditPage() {
                   </>)}
                 </div>
               )}
-              {form.hasCreditCard && (
+              {(form.hasCreditCard || paidOffDebtTypes.has('credit_card')) && (
                 <div className="pl-4 border-l-2 border-red-100 space-y-3">
                   <Divider label="Credit Card Debt" />
                   {trackedDebts.credit_card ? (<>
@@ -1269,7 +1274,7 @@ export default function AuditPage() {
                   </>)}
                 </div>
               )}
-              {form.hasBusinessLoan && (
+              {(form.hasBusinessLoan || paidOffDebtTypes.has('business_loan')) && (
                 <div className="pl-4 border-l-2 border-gray-100 space-y-3">
                   <Divider label="Business Loan" />
                   {trackedDebts.business_loan ? (<>
@@ -1289,7 +1294,7 @@ export default function AuditPage() {
                   </>)}
                 </div>
               )}
-              {form.hasOtherDebt && (
+              {(form.hasOtherDebt || paidOffDebtTypes.has('other')) && (
                 <div className="pl-4 border-l-2 border-teal-100 space-y-3">
                   <Divider label="Other Debt" />
                   {paidOffDebtTypes.has('other') ? (
