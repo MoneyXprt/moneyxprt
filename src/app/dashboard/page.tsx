@@ -317,7 +317,7 @@ function WealthScoreboardCard({
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Your Scoreboard</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
         <div>
           <div className="flex justify-between items-center mb-1">
             <p className="text-xs font-semibold text-gray-700">Strategies Activated</p>
@@ -938,7 +938,7 @@ export default function DashboardHome() {
     <div className="min-h-screen bg-gray-50">
       {/* Nav */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-[#1B3A2D] flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
@@ -954,7 +954,7 @@ export default function DashboardHome() {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-5 space-y-4">
+      <main className="max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto px-4 py-5 space-y-4">
 
         {/* Financial phase badge — top of page */}
         {financialPhase && <FinancialPhaseBadge phase={financialPhase} />}
