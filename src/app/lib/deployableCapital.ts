@@ -199,6 +199,18 @@ export function computeMonthlyTakeHome(s: FinancialSnapshot): number {
 }
 
 /**
+ * Gross annual income before tax — used for ratio metrics (e.g. effective tax rate,
+ * debt-to-income) rather than deployable-capital math. Extracted from
+ * audit/snapshot-summary/page.tsx's local computeGrossAnnualIncome so every consumer
+ * shares the exact same formula and the numbers can never disagree.
+ */
+export function computeGrossAnnualIncome(s: FinancialSnapshot): number {
+  return s.w2Income + s.bonusTakenAsCash + s.income1099 + s.carAllowanceAnnual +
+         s.otherIncomeAnnual + s.spouseW2Income + s.spouseBusinessNetProfit +
+         (s.monthlyRentalIncome * 12) + (s.monthlyDividendIncome * 12);
+}
+
+/**
  * Monthly capital deployable toward assets: recurring take-home pay minus
  * essential/discretionary spend minus minimum debt payments across every debt type
  * minus any typical extra (above-minimum) debt payments the user reported. No bonus —

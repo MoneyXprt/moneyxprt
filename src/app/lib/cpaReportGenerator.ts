@@ -1,6 +1,9 @@
 import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
 import { evaluateAll } from '@/app/lib/strategies/registry';
 import { getSnapshotForServer } from '@/app/lib/snapshots';
+import { computeGrossAnnualIncome } from '@/app/lib/deployableCapital';
+import { simulateDebtSnowballPayoff, type SimulatableDebt } from '@/app/lib/debtPayoff';
+import type { FinancialPhase } from '@/app/lib/financialPhase';
 
 // ─── Public interface ─────────────────────────────────────────────────────────
 
@@ -12,8 +15,23 @@ export interface CpaReportData {
     estimatedAGI: number;
     email: string;
   };
+  // Snapshot-level facts + the plan already generated/saved elsewhere — not
+  // recomputed here, just surfaced for the CPA's context. See buildCpaReportData
+  // for exactly where each figure is sourced from.
+  financialBaseline: {
+    w2Income: number;
+    /** Calendar year debt is projected debt-free, or null if not in a debt-payoff phase / no active debt. */
+    debtFreeYear: number | null;
+    /** Freedom number, $/month — null if no plan has been generated yet. */
+    freedomNumberMonthly: number | null;
+    /** Calendar year the freedom number is projected to be reached — null if no plan. */
+    targetFreedomYear: number | null;
+    effectiveTaxRate: number;
+    taxPaidLastYear: number;
+  };
   implementedStrategies: Array<{
     name: string;
+    category: string;
     ircSection: string;
     estimatedAnnualValue: number;
     description: string;
@@ -28,6 +46,22 @@ export interface CpaReportData {
   };
   totalEstimatedSavings: number;
 }
+
+// ─── Strategy category → section title (Implemented Strategies grouping) ──────
+// Grouped by each strategy's static category rather than planGenerator.ts's live
+// phase-number assignment — a strategy's phase can shift over time (roadmap-
+// dependent), same historical-accuracy problem already fixed for descriptions
+// above; category is fixed per strategy and never changes with snapshot inputs.
+export const CATEGORY_TITLES: Record<string, string> = {
+  tax:                'Tax Strategies',
+  retirement:         'Retirement Strategies',
+  realEstate:         'Real Estate Strategies',
+  businessStructure:  'Business Structure Strategies',
+  debt:               'Debt Strategies',
+  investment:         'Investment Strategies',
+  family:             'Family Strategies',
+  other:              'Other Strategies',
+};
 
 // ─── IRC section lookup (by strategy id) ─────────────────────────────────────
 
@@ -111,7 +145,7 @@ export async function buildCpaReportData(
   const yearStart = `${currentYear}-01-01`;
   const yearEnd   = `${currentYear + 1}-01-01`;
 
-  const [snapshot, actionsResult, repsLogsResult] = await Promise.all([
+  const [snapshot, actionsResult, repsLogsResult, planRowResult, debtsResult, phaseResult] = await Promise.all([
     getSnapshotForServer(userId, sb),
     sb
       .from('execution_actions')
@@ -127,6 +161,24 @@ export async function buildCpaReportData(
       .gte('date', yearStart)
       .lt('date', yearEnd)
       .order('date'),
+    sb
+      .from('generated_plans')
+      .select('freedom_gap, deployable_capital_per_year')
+      .eq('user_id', userId)
+      .eq('is_current', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    sb
+      .from('debts')
+      .select('id, name, current_balance, interest_rate, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true),
+    sb
+      .from('financial_phase_status')
+      .select('phase')
+      .eq('user_id', userId)
+      .maybeSingle(),
   ]);
 
   if (!snapshot) throw new Error('No financial snapshot found for this user.');
@@ -148,6 +200,10 @@ export async function buildCpaReportData(
     const actionDescription = ((action.description as string | null) ?? '').trim();
     return {
       name: strategyResult?.name ?? (action.title as string),
+      // category (unlike phase/state) is fixed per strategy id and never changes with
+      // snapshot inputs, so it's safe to read from today's evaluateAll() even though the
+      // strategy may have been completed under different conditions — see CATEGORY_TITLES.
+      category: strategyResult?.category ?? 'other',
       ircSection: IRC_SECTIONS[strategyId] ?? '',
       estimatedAnnualValue: Number(action.estimated_annual_value ?? strategyResult?.estimatedAnnualValue ?? 0),
       description: actionDescription !== '' ? actionDescription : (strategyResult?.reason ?? ''),
@@ -160,6 +216,45 @@ export async function buildCpaReportData(
         : '',
     };
   });
+
+  // ── Financial baseline & freedom plan ─────────────────────────────────────
+  // Reads the plan already generated/saved on plan/results/page.tsx (freedom_gap,
+  // deployable_capital_per_year) rather than re-deriving the full PlanInputs and
+  // calling generateBaselinePlan again here — same numbers the user already sees on
+  // Plan. Debt-free year is computed via the same simulateDebtSnowballPayoff planGenerator.ts
+  // uses, fed the persisted deployable_capital_per_year, gated the same way (only in an
+  // active debt-payoff phase, with active debts) rather than recomputing that gate.
+
+  const freedomGap = planRowResult.data?.freedom_gap as
+    { freedomNumberMonthly?: number; projectedFreedomYear?: number } | null | undefined;
+  const freedomNumberMonthly = freedomGap?.freedomNumberMonthly ?? null;
+  const targetFreedomYear    = freedomGap?.projectedFreedomYear  ?? null;
+
+  const financialPhase = (phaseResult.data?.phase as FinancialPhase | undefined) ?? null;
+  const isDebtPayoffPhase = financialPhase === 'funding_mini_ef' || financialPhase === 'paying_debt';
+  const activeDebts: SimulatableDebt[] = (debtsResult.data ?? []).map(d => ({
+    id:             d.id,
+    name:           d.name,
+    currentBalance: Number(d.current_balance),
+    interestRate:   Number(d.interest_rate),
+    isActive:       d.is_active,
+  }));
+  const deployableCapitalPerYear = Number(planRowResult.data?.deployable_capital_per_year ?? 0);
+  const debtFreeYear = isDebtPayoffPhase && activeDebts.length > 0
+    ? currentYear + simulateDebtSnowballPayoff(activeDebts, deployableCapitalPerYear).yearsToPayoff
+    : null;
+
+  const grossAnnualIncome = computeGrossAnnualIncome(snapshot);
+  const effectiveTaxRate  = grossAnnualIncome > 0 ? snapshot.currentTaxPaid / grossAnnualIncome : 0;
+
+  const financialBaseline = {
+    w2Income:             snapshot.w2Income,
+    debtFreeYear,
+    freedomNumberMonthly,
+    targetFreedomYear,
+    effectiveTaxRate,
+    taxPaidLastYear: snapshot.currentTaxPaid,
+  };
 
   // ── REPS summary ──────────────────────────────────────────────────────────
 
@@ -215,6 +310,7 @@ export async function buildCpaReportData(
       estimatedAGI,
       email:        userEmail,
     },
+    financialBaseline,
     implementedStrategies,
     repsSummary: {
       totalHoursLoggedYTD: totalHoursYTD,

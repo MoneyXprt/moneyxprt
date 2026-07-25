@@ -6,7 +6,7 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
-import { computeMonthlyTakeHome, computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal } from '@/app/lib/deployableCapital';
+import { computeMonthlyTakeHome, computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal, computeGrossAnnualIncome } from '@/app/lib/deployableCapital';
 import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
 
@@ -29,12 +29,6 @@ function pct(n: number): string {
 function computeTotalDebt(s: FinancialSnapshot): number {
   return s.carLoanBalance + s.studentLoanBalance + s.personalLoanBalance +
          s.creditCardBalance + s.businessLoanBalance + s.otherDebtBalance;
-}
-
-function computeGrossAnnualIncome(s: FinancialSnapshot): number {
-  return s.w2Income + s.bonusTakenAsCash + s.income1099 + s.carAllowanceAnnual +
-         s.otherIncomeAnnual + s.spouseW2Income + s.spouseBusinessNetProfit +
-         (s.monthlyRentalIncome * 12) + (s.monthlyDividendIncome * 12);
 }
 
 function computeNetWorth(s: FinancialSnapshot): number {
