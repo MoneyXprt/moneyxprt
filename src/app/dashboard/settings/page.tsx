@@ -474,7 +474,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6 space-y-5">
+      <main className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
 
         {/* Account info */}
         <div className="bg-[#1B3A2D] rounded-2xl px-5 py-4 text-white">
