@@ -176,7 +176,13 @@ function ActiveDebtCard({
               <label className="block text-[10px] font-medium text-gray-500 mb-1">Amount</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-xs pointer-events-none">$</span>
-                <input type="number" min="0" required value={amount} onChange={e => setAmount(e.target.value)}
+                <input type="text" inputMode="numeric" required value={amount}
+                  onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                  onBlur={() => {
+                    const clean = amount.replace(/,/g, '');
+                    const num = Number(clean);
+                    if (clean && !isNaN(num) && num > 0) setAmount(num.toLocaleString('en-US'));
+                  }}
                   placeholder="0"
                   className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
               </div>
@@ -311,7 +317,7 @@ export default function DebtsPage() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-5">
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 pt-8 pb-28 space-y-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Debts</h1>
           <p className="mt-1 text-sm text-gray-500">
