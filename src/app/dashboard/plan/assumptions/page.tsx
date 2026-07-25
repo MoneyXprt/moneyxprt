@@ -66,11 +66,11 @@ function CurrencyInput({
     <div className="relative mt-1">
       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">$</span>
       <input
-        type="number"
-        min="0"
-        value={value || ''}
+        type="text"
+        inputMode="numeric"
+        value={value > 0 ? value.toLocaleString('en-US') : ''}
         placeholder={placeholder ?? '0'}
-        onChange={e => onChange(Number(e.target.value) || 0)}
+        onChange={e => onChange(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
         className="w-full pl-6 pr-2 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition tabular-nums bg-white"
       />
     </div>
