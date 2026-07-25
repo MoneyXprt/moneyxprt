@@ -40,6 +40,13 @@ function buildUserPrompt(body: NarrativeRequest): string {
     `Year ${r.year} (${r.calendarYear}): ${r.action} → total passive income $${Math.round(r.cumulativeMonthlyIncome).toLocaleString()}/mo`
   ).join('\n');
 
+  // The model is never otherwise told what "today" is, so left to itself it has to
+  // infer "X years away" phrasing from the absolute calendarYear values above — an
+  // ungrounded guess, not a calculation. Compute it here and hand over the exact
+  // number instead.
+  const currentYear = new Date().getFullYear();
+  const yearsUntilFreedom = projectedFreedomYear - currentYear;
+
   return `Here is a financial plan summary for a high-income W2 earner. Write a 3-paragraph plain-language summary in CFO voice.
 
 THEIR VISION:
@@ -48,10 +55,11 @@ THEIR VISION:
 Their goal: ${freedomTypeLabel}, target age ${targetFreeAge}.
 
 KEY NUMBERS:
+- Current year: ${currentYear}
 - Freedom number (monthly passive income needed): $${Math.round(freedomNumber).toLocaleString()}/mo
 - Current passive income: $${Math.round(currentPassiveIncome).toLocaleString()}/mo
 - Monthly gap to close: $${Math.round(gapMonthly).toLocaleString()}/mo
-- Projected year of freedom: ${projectedFreedomYear}
+- Projected year of freedom: ${projectedFreedomYear} (exactly ${yearsUntilFreedom} year${yearsUntilFreedom === 1 ? '' : 's'} from now)
 - Deployable capital per year (after tax savings): $${Math.round(deployableCapitalPerYear).toLocaleString()}
 - Annual CASH tax savings identified (real dollars redirected to deployable capital this year): $${Math.round(taxStrategyAnnualValue).toLocaleString()}${
     projectedTaxStrategyAnnualValue && projectedTaxStrategyAnnualValue > 0
@@ -77,6 +85,10 @@ ${
     ? `\nNote: cash tax savings and projected long-term value are NOT the same thing and must not be combined into one number or described interchangeably. Cash tax savings are real dollars available this year to redirect toward assets. Projected long-term value (e.g. Backdoor Roth) is future tax-free growth, not cash available now. If you mention both, name them separately — e.g. "$X in cash tax savings this year, plus $Y in projected long-term value from tax-advantaged accounts" — never state a single flat "$Z in tax savings" figure that blends the two.`
     : ''
 }
+
+Note: whenever you state how many years away their freedom year is, use the exact
+"${yearsUntilFreedom} years from now" figure given in KEY NUMBERS — do not infer or
+calculate it yourself from the calendar years, and do not round it.
 
 Write exactly 3 paragraphs. No headers, no bullets, no lists.
 Paragraph 1: Their current situation — what the numbers actually mean and what the gap represents in real terms.
