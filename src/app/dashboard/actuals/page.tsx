@@ -121,7 +121,7 @@ function LoggableItemCard({ item }: { item: LoggableItem }) {
   return (
     <Link
       href={item.href}
-      className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:bg-gray-50 transition"
+      className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:bg-gray-50 hover:border-emerald-500 hover:shadow-md transition"
     >
       <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
         {item.icon}
