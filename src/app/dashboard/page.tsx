@@ -7,6 +7,8 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { calculateFreedomScore } from '@/app/lib/freedomScore';
 import type { FreedomScoreBreakdown } from '@/app/lib/freedomScore';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
+import { computeRepsRelevance } from '@/app/lib/planGenerator';
+import type { AssetRoadmapRow } from '@/app/lib/planGenerator';
 import type { Session } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -443,8 +445,7 @@ function REPSTracker({ hoursLogged }: { hoursLogged: number }) {
   const status = repsStatus(hoursLogged);
 
   return (
-    <Link href="/dashboard/logs"
-      className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-4 min-h-[44px] hover:bg-gray-50 transition group">
+    <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-4 min-h-[44px]">
       <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
         <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -465,8 +466,11 @@ function REPSTracker({ hoursLogged }: { hoursLogged: number }) {
         </div>
         <p className="text-[10px] text-gray-400 text-right mt-0.5">{pct}%</p>
       </div>
-      <span className="text-gray-300 group-hover:text-gray-500 transition text-sm shrink-0">→</span>
-    </Link>
+      <Link href="/dashboard/logs"
+        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 transition">
+        +Log Time
+      </Link>
+    </div>
   );
 }
 
@@ -696,6 +700,7 @@ export default function DashboardHome() {
   const [loading, setLoading]         = useState(true);
   const [plan, setPlan]               = useState<PlanData | null>(null);
   const [repsHours, setRepsHours]     = useState(0);
+  const [repsRelevant, setRepsRelevant] = useState(false);
   const [stale, setStale]             = useState(false);
   const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
   const [execNextAction, setExecNextAction] = useState<{ id: string; title: string; estimated_annual_value: number } | null>(null);
@@ -736,7 +741,7 @@ export default function DashboardHome() {
       { data: phaseRow },
     ] = await Promise.all([
       sb.from('generated_plans')
-        .select('freedom_gap, phases, tax_strategy_stack, created_at')
+        .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, created_at')
         .eq('user_id', userId)
         .eq('is_current', true)
         .order('created_at', { ascending: false })
@@ -748,7 +753,7 @@ export default function DashboardHome() {
         .gte('date', `${currentYear}-01-01`)
         .lt('date', `${currentYear + 1}-01-01`),
       sb.from('financial_snapshots')
-        .select('created_at, monthly_rental_income, monthly_dividend_income')
+        .select('created_at, monthly_rental_income, monthly_dividend_income, currently_owns_rental')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -784,6 +789,20 @@ export default function DashboardHome() {
         createdAt:        planRow.created_at as string,
       });
     }
+
+    // Same relevance check planGenerator.ts uses to gate Phase 4's REPS note (owned now,
+    // or a rental acquisition projected within 2 years) — the REPS Hours widget below
+    // is hidden entirely rather than shown years ahead of being relevant. Kept as a
+    // local (not just the repsRelevant state, which wouldn't be readable synchronously
+    // within this same call) so the "next action" pick below can filter on it too —
+    // execution_actions rows can be persisted under actionGenerator.ts's own, broader
+    // repsRelevant (any rental anywhere in the ~20yr roadmap, not just within 2 years),
+    // so a REPS row can exist in the table even when this narrower check is false.
+    const repsRelevantNow = computeRepsRelevance(
+      !!snapshotRow?.currently_owns_rental,
+      (planRow?.asset_roadmap as AssetRoadmapRow[] | undefined) ?? [],
+    ).relevant;
+    setRepsRelevant(repsRelevantNow);
 
     if (snapshotRow) {
       setSnapshotDate(snapshotRow.created_at as string);
@@ -823,7 +842,9 @@ export default function DashboardHome() {
     }
 
     if (rows.length > 0) {
-      const next = rows.find(r => !r.completed && r.category === 'this_week');
+      const next = rows.find(r =>
+        !r.completed && r.category === 'this_week' && (r.strategy_id !== 'reps' || repsRelevantNow),
+      );
       if (next) {
         setExecNextAction({ id: next.id, title: next.title, estimated_annual_value: Number(next.estimated_annual_value || 0) });
       }
@@ -1038,8 +1059,9 @@ export default function DashboardHome() {
               <TaxStrategyPanel stack={plan.taxStrategyStack} />
             )}
 
-            {/* REPS tracker */}
-            <REPSTracker hoursLogged={repsHours} />
+            {/* REPS tracker — hidden until REPS is actually relevant (rental owned or
+                imminent), see computeRepsRelevance in loadData */}
+            {repsRelevant && <REPSTracker hoursLogged={repsHours} />}
 
             {/* Quick actions */}
             <div>

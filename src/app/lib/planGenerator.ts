@@ -73,6 +73,26 @@ export interface AssetRoadmapRow {
   remainingGap: number;
 }
 
+export interface RepsRelevance {
+  relevant: boolean;
+  rentalAcquisitionRow: AssetRoadmapRow | undefined;
+}
+
+// REPS time-logging is only relevant once a rental is owned or imminent — active when
+// owned now or acquired within 2 years; otherwise not yet relevant. Shared by the
+// Phase 4 roadmap note below and any UI that needs to gate REPS visibility the same way
+// (e.g. dashboard/page.tsx's REPS Hours widget) — single source of truth so the two
+// never drift apart.
+export function computeRepsRelevance(currentlyOwnsRental: boolean, roadmap: AssetRoadmapRow[]): RepsRelevance {
+  const rentalAcquisitionRow = roadmap.find(
+    r => (r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental') && r.action.startsWith('Acquire'),
+  );
+  return {
+    relevant: currentlyOwnsRental || (!!rentalAcquisitionRow && rentalAcquisitionRow.year <= 2),
+    rentalAcquisitionRow,
+  };
+}
+
 export interface GeneratedPlan {
   freedomGap: {
     freedomNumberMonthly: number;
@@ -859,14 +879,10 @@ function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAss
   }
 
   // Phase 4's REPS time-log action is only relevant once a rental is owned or imminent
-  // — gated the same way Phase 3's timeline lookups work, searching the same roadmap
-  // for an "Acquire {rental}" row. Active/high-priority when owned now or acquired
-  // within 2 years; otherwise deferred to a low-priority note, same pattern as the
-  // emergency-fund deferral above, rather than implying it's a near-term goal.
-  const rentalAcquisitionRow = roadmap.find(
-    r => (r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental') && r.action.startsWith('Acquire'),
-  );
-  const repsRelevantNow = snapshot.currentlyOwnsRental || (!!rentalAcquisitionRow && rentalAcquisitionRow.year <= 2);
+  // — active/high-priority when owned now or acquired within 2 years; otherwise
+  // deferred to a low-priority note, same pattern as the emergency-fund deferral above,
+  // rather than implying it's a near-term goal.
+  const { relevant: repsRelevantNow, rentalAcquisitionRow } = computeRepsRelevance(snapshot.currentlyOwnsRental, roadmap);
   phase4.actions.unshift(
     repsRelevantNow
       ? {
