@@ -251,7 +251,7 @@ export default function BonusLogPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 pb-24 space-y-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Bonus Payments</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -270,7 +270,9 @@ export default function BonusLogPage() {
               <label className="block text-xs font-medium text-gray-700 mb-1">Amount (gross)</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-sm pointer-events-none">$</span>
-                <input type="number" min="0" required value={amount} onChange={e => setAmount(e.target.value)}
+                <input type="text" inputMode="numeric" required
+                  value={amount ? Number(amount).toLocaleString('en-US') : amount}
+                  onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="0"
                   className="w-full pl-7 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
               </div>
@@ -280,7 +282,9 @@ export default function BonusLogPage() {
               <p className="text-xs text-gray-400 mb-1.5">What actually landed in your account, after withholding.</p>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-sm pointer-events-none">$</span>
-                <input type="number" min="0" value={netAmount} onChange={e => setNetAmount(e.target.value)}
+                <input type="text" inputMode="numeric"
+                  value={netAmount ? Number(netAmount).toLocaleString('en-US') : netAmount}
+                  onChange={e => setNetAmount(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="0"
                   className="w-full pl-7 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
               </div>
