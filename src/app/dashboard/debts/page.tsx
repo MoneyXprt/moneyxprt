@@ -34,6 +34,18 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Native <input type="date"> pre-filled with a value can require the click to land
+// precisely on the calendar icon before the browser opens the picker — forcing it via
+// showPicker() makes a single click/focus reliable regardless of where it lands.
+// showPicker() isn't supported in every browser (older Safari), so the feature check +
+// try/catch fail silently and fall back to normal native click behavior there.
+function openDatePicker(e: React.SyntheticEvent<HTMLInputElement>) {
+  try {
+    const input = e.currentTarget;
+    if (typeof input.showPicker === 'function') input.showPicker();
+  } catch { /* unsupported browser — falls back to native click behavior */ }
+}
+
 function percentPaidOff(d: DebtRow): number {
   if (d.original_balance <= 0) return 0;
   const pct = ((d.original_balance - d.current_balance) / d.original_balance) * 100;
@@ -172,6 +184,7 @@ function ActiveDebtCard({
             <div className="flex-1">
               <label className="block text-[10px] font-medium text-gray-500 mb-1">Date</label>
               <input type="date" required value={date} onChange={e => setDate(e.target.value)}
+                onClick={openDatePicker} onFocus={openDatePicker}
                 className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
             </div>
           </div>

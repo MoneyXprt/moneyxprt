@@ -32,6 +32,18 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Native <input type="date"> pre-filled with a value can require the click to land
+// precisely on the calendar icon before the browser opens the picker — forcing it via
+// showPicker() makes a single click/focus reliable regardless of where it lands.
+// showPicker() isn't supported in every browser (older Safari), so the feature check +
+// try/catch fail silently and fall back to normal native click behavior there.
+function openDatePicker(e: React.SyntheticEvent<HTMLInputElement>) {
+  try {
+    const input = e.currentTarget;
+    if (typeof input.showPicker === 'function') input.showPicker();
+  } catch { /* unsupported browser — falls back to native click behavior */ }
+}
+
 // ─── Auth gate ────────────────────────────────────────────────────────────────
 
 function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
@@ -276,6 +288,7 @@ export default function BonusLogPage() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Date paid</label>
               <input type="date" required value={datePaid} onChange={e => setDatePaid(e.target.value)}
+                onClick={openDatePicker} onFocus={openDatePicker}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
             </div>
             {submitError && (
