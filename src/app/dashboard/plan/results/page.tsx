@@ -407,6 +407,9 @@ export default function PlanResultsPage() {
   const [narrative, setNarrative]     = useState<string | null>(null);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [isPartnerView, setIsPartnerView] = useState(false);
+  const [primaryUserId, setPrimaryUserId] = useState<string | null>(null);
+  const [refreshingPartnerPlan, setRefreshingPartnerPlan] = useState(false);
+  const [refreshPartnerError, setRefreshPartnerError]     = useState<string | null>(null);
   const [visionText, setVisionText]   = useState<string | null>(null);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
   const actionsSaved = useRef(false);
@@ -443,6 +446,7 @@ export default function PlanResultsPage() {
 
       if (primaryProfile) {
         setIsPartnerView(true);
+        setPrimaryUserId(primaryProfile.user_id);
         // Fetch the primary user's current plan (RLS allows this via partner policy)
         const { data: planRow } = await sb
           .from('generated_plans')
@@ -697,6 +701,34 @@ export default function PlanResultsPage() {
     }
   }
 
+  // ── Partner-triggered refresh (explicit only — never automatic from viewing) ──
+  async function handleRefreshPartnerPlan() {
+    if (!session || !primaryUserId || refreshingPartnerPlan) return;
+    setRefreshingPartnerPlan(true);
+    setRefreshPartnerError(null);
+    try {
+      const response = await fetch('/api/regenerate-partner-plan', {
+        method: 'POST',
+        headers: {
+          Authorization:  `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ primaryUserId }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };
+        throw new Error(err.error ?? `Server error ${response.status}`);
+      }
+      // Re-fetch to reflect the freshly-regenerated plan (this re-reads the same
+      // read-only generated_plans row this view already displays from).
+      await buildPlan(session);
+    } catch (e) {
+      setRefreshPartnerError(e instanceof Error ? e.message : 'Refresh failed. Please try again.');
+    } finally {
+      setRefreshingPartnerPlan(false);
+    }
+  }
+
   // ── Auth redirect ────────────────────────────────────────────────────────
   if (!loading && !session) {
     return (
@@ -781,12 +813,25 @@ export default function PlanResultsPage() {
 
           {/* ── Partner banner ────────────────────────────────────────── */}
           {isPartnerView && (
-            <div className="flex items-center gap-3 bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4">
-              <span className="text-2xl">🏠</span>
-              <div>
-                <p className="text-sm font-semibold text-purple-900">Your shared path to freedom</p>
-                <p className="text-xs text-purple-600 mt-0.5">You're viewing your household's freedom plan. Head to Execute to check off your actions.</p>
+            <div className="bg-purple-50 border border-purple-100 rounded-2xl px-5 py-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🏠</span>
+                <div>
+                  <p className="text-sm font-semibold text-purple-900">Your shared path to freedom</p>
+                  <p className="text-xs text-purple-600 mt-0.5">You're viewing your household's freedom plan. Head to Execute to check off your actions.</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={handleRefreshPartnerPlan}
+                disabled={refreshingPartnerPlan}
+                className="w-full py-2 rounded-xl border border-purple-200 bg-white text-purple-700 text-xs font-semibold hover:bg-purple-50 disabled:opacity-60 transition"
+              >
+                {refreshingPartnerPlan ? 'Refreshing…' : "Refresh my partner's action list"}
+              </button>
+              {refreshPartnerError && (
+                <p className="text-xs text-red-600">{refreshPartnerError}</p>
+              )}
             </div>
           )}
 

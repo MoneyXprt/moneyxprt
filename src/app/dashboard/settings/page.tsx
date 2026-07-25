@@ -57,6 +57,168 @@ function Row({ label, sublabel, right }: { label: string; sublabel?: string; rig
 
 type PartnerStatus = 'loading' | 'none' | 'pending' | 'connected' | 'is_partner';
 
+type PendingInvite = { id: string; token: string; invitee_email: string };
+
+// ─── Partner section ────────────────────────────────────────────────────────
+// Module scope (like Toggle/Section/Row above) rather than defined inside
+// SettingsPage's body — a function declared inside a component's render body is
+// re-created on every render, so React sees a new component type on every keystroke
+// into the invite-email input and remounts the whole subtree, dropping focus.
+
+interface PartnerSectionProps {
+  partnerStatus: PartnerStatus;
+  connectedEmail: string;
+  removingPartner: boolean;
+  removePartner: () => Promise<void>;
+  pendingInvite: PendingInvite | null;
+  inviteLink: string;
+  cancellingInvite: boolean;
+  cancelInvite: () => Promise<void>;
+  sendInvite: (e: React.FormEvent) => Promise<void>;
+  inviteInput: string;
+  setInviteInput: (v: string) => void;
+  inviteError: string;
+  inviteSubmitting: boolean;
+}
+
+function PartnerSection({
+  partnerStatus, connectedEmail, removingPartner, removePartner,
+  pendingInvite, inviteLink, cancellingInvite, cancelInvite,
+  sendInvite, inviteInput, setInviteInput, inviteError, inviteSubmitting,
+}: PartnerSectionProps) {
+  if (partnerStatus === 'loading') {
+    return (
+      <Section title="Your Freedom Partner">
+        <div className="px-5 py-6 flex justify-center">
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Section>
+    );
+  }
+
+  if (partnerStatus === 'is_partner') {
+    return (
+      <Section title="Your Freedom Partner">
+        <div className="px-5 py-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Connected to a shared plan</p>
+              <p className="text-xs text-gray-400">You can see your household's freedom plan and check off your actions.</p>
+            </div>
+          </div>
+        </div>
+      </Section>
+    );
+  }
+
+  if (partnerStatus === 'connected') {
+    return (
+      <Section title="Your Freedom Partner">
+        <div className="px-5 py-5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+              <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Connected with {connectedEmail}</p>
+              <p className="text-xs text-gray-400 mt-0.5">Your partner can see your freedom plan and check off their actions.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={removePartner}
+            disabled={removingPartner}
+            className="text-xs font-semibold text-red-500 hover:text-red-700 transition disabled:opacity-50"
+          >
+            {removingPartner ? 'Removing…' : 'Remove partner access'}
+          </button>
+        </div>
+      </Section>
+    );
+  }
+
+  if (partnerStatus === 'pending' && pendingInvite) {
+    return (
+      <Section title="Your Freedom Partner">
+        <div className="px-5 py-5 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+              <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Invitation pending</p>
+              <p className="text-xs text-gray-500 mt-0.5">{pendingInvite.invitee_email}</p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1.5">Share this link with your partner:</p>
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
+              <p className="text-xs text-gray-600 break-all flex-1 font-mono">{inviteLink}</p>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(inviteLink)}
+                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 shrink-0 transition"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={cancelInvite}
+            disabled={cancellingInvite}
+            className="text-xs font-semibold text-red-500 hover:text-red-700 transition disabled:opacity-50"
+          >
+            {cancellingInvite ? 'Cancelling…' : 'Cancel invitation'}
+          </button>
+        </div>
+      </Section>
+    );
+  }
+
+  // partnerStatus === 'none'
+  return (
+    <Section title="Your Freedom Partner">
+      <div className="px-5 py-5">
+        <p className="text-sm text-gray-500 mb-4">
+          Invite your spouse or partner to see your shared freedom plan.
+        </p>
+        <form onSubmit={sendInvite} className="space-y-3">
+          <div>
+            <input
+              type="email"
+              placeholder="Partner's email address"
+              value={inviteInput}
+              onChange={e => setInviteInput(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+            />
+            {inviteError && <p className="text-xs text-red-500 mt-1.5">{inviteError}</p>}
+          </div>
+          <button
+            type="submit"
+            disabled={inviteSubmitting}
+            className="w-full py-2.5 rounded-xl bg-[#1B3A2D] text-white text-sm font-semibold hover:bg-emerald-900 transition disabled:opacity-60"
+          >
+            {inviteSubmitting ? 'Sending…' : 'Send invitation'}
+          </button>
+        </form>
+        <p className="text-xs text-gray-400 mt-3">Free for partners. They&apos;ll get a link to join your shared plan.</p>
+      </div>
+    </Section>
+  );
+}
+
 interface NotificationPrefs {
   weeklyCheckin: boolean;
   milestones: boolean;
@@ -73,7 +235,7 @@ export default function SettingsPage() {
 
   // Partner state
   const [partnerStatus, setPartnerStatus] = useState<PartnerStatus>('loading');
-  const [pendingInvite, setPendingInvite] = useState<{ id: string; token: string; invitee_email: string } | null>(null);
+  const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [connectedEmail, setConnectedEmail] = useState('');
   const [inviterEmail, setInviterEmail]   = useState(''); // when this user is the partner
   const [inviteInput, setInviteInput]     = useState('');
@@ -296,142 +458,6 @@ export default function SettingsPage() {
     );
   }
 
-  // ── Partner section render ─────────────────────────────────────────────────
-
-  function PartnerSection() {
-    if (partnerStatus === 'loading') {
-      return (
-        <Section title="Your Freedom Partner">
-          <div className="px-5 py-6 flex justify-center">
-            <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        </Section>
-      );
-    }
-
-    if (partnerStatus === 'is_partner') {
-      return (
-        <Section title="Your Freedom Partner">
-          <div className="px-5 py-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Connected to a shared plan</p>
-                <p className="text-xs text-gray-400">You can see your household's freedom plan and check off your actions.</p>
-              </div>
-            </div>
-          </div>
-        </Section>
-      );
-    }
-
-    if (partnerStatus === 'connected') {
-      return (
-        <Section title="Your Freedom Partner">
-          <div className="px-5 py-5">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
-                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Connected with {connectedEmail}</p>
-                <p className="text-xs text-gray-400 mt-0.5">Your partner can see your freedom plan and check off their actions.</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={removePartner}
-              disabled={removingPartner}
-              className="text-xs font-semibold text-red-500 hover:text-red-700 transition disabled:opacity-50"
-            >
-              {removingPartner ? 'Removing…' : 'Remove partner access'}
-            </button>
-          </div>
-        </Section>
-      );
-    }
-
-    if (partnerStatus === 'pending' && pendingInvite) {
-      return (
-        <Section title="Your Freedom Partner">
-          <div className="px-5 py-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Invitation pending</p>
-                <p className="text-xs text-gray-500 mt-0.5">{pendingInvite.invitee_email}</p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-1.5">Share this link with your partner:</p>
-              <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
-                <p className="text-xs text-gray-600 break-all flex-1 font-mono">{inviteLink}</p>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard?.writeText(inviteLink)}
-                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 shrink-0 transition"
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={cancelInvite}
-              disabled={cancellingInvite}
-              className="text-xs font-semibold text-red-500 hover:text-red-700 transition disabled:opacity-50"
-            >
-              {cancellingInvite ? 'Cancelling…' : 'Cancel invitation'}
-            </button>
-          </div>
-        </Section>
-      );
-    }
-
-    // partnerStatus === 'none'
-    return (
-      <Section title="Your Freedom Partner">
-        <div className="px-5 py-5">
-          <p className="text-sm text-gray-500 mb-4">
-            Invite your spouse or partner to see your shared freedom plan.
-          </p>
-          <form onSubmit={sendInvite} className="space-y-3">
-            <div>
-              <input
-                type="email"
-                placeholder="Partner's email address"
-                value={inviteInput}
-                onChange={e => setInviteInput(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-              />
-              {inviteError && <p className="text-xs text-red-500 mt-1.5">{inviteError}</p>}
-            </div>
-            <button
-              type="submit"
-              disabled={inviteSubmitting}
-              className="w-full py-2.5 rounded-xl bg-[#1B3A2D] text-white text-sm font-semibold hover:bg-emerald-900 transition disabled:opacity-60"
-            >
-              {inviteSubmitting ? 'Sending…' : 'Send invitation'}
-            </button>
-          </form>
-          <p className="text-xs text-gray-400 mt-3">Free for partners. They&apos;ll get a link to join your shared plan.</p>
-        </div>
-      </Section>
-    );
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -457,7 +483,21 @@ export default function SettingsPage() {
         </div>
 
         {/* Partner section */}
-        <PartnerSection />
+        <PartnerSection
+          partnerStatus={partnerStatus}
+          connectedEmail={connectedEmail}
+          removingPartner={removingPartner}
+          removePartner={removePartner}
+          pendingInvite={pendingInvite}
+          inviteLink={inviteLink}
+          cancellingInvite={cancellingInvite}
+          cancelInvite={cancelInvite}
+          sendInvite={sendInvite}
+          inviteInput={inviteInput}
+          setInviteInput={setInviteInput}
+          inviteError={inviteError}
+          inviteSubmitting={inviteSubmitting}
+        />
 
         {/* Notifications */}
         <Section title="Notifications">

@@ -3,11 +3,13 @@
  * Pure generator (no side effects) + Supabase persistence helpers.
  */
 
+import { computeRepsRelevance } from './planGenerator';
 import type { GeneratedPlan } from './planGenerator';
 import type { FinancialSnapshot } from './strategies/types';
 import type { BonusPlan } from './deployableCapital';
 import { evaluateAll } from './strategies';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from './financialPhase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,9 +94,11 @@ export function generateActions(
   // same variable "Research your target rental market" and "Buy your first rental"
   // use further down, where an existing owner shouldn't see shopping actions.
   const hasRental = plan.assetRoadmap.some(r => r.assetType === 'long_term_rental' || r.assetType === 'short_term_rental');
-  // REPS relevance is broader: also true for someone who already owns a rental, even
-  // if (for whatever reason) their roadmap has no rental-type row.
-  const repsRelevant = snapshot.currentlyOwnsRental || hasRental;
+  // REPS relevance uses the shared 2-year-window definition (owned now, or acquisition
+  // projected within 2 years) — the same one planGenerator.ts's Phase 4 note and
+  // dashboard/page.tsx's REPS Hours widget use, so there's exactly one canonical
+  // definition instead of a second, broader (unbounded-roadmap) copy living here.
+  const repsRelevant = computeRepsRelevance(snapshot.currentlyOwnsRental, plan.assetRoadmap).relevant;
 
   const thisWeek: ExecutionAction[]    = [];
   const thisQuarter: ExecutionAction[] = [];
@@ -358,15 +362,22 @@ export function generateActions(
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-// Module-level guard — prevents concurrent saves from racing each other
-let _saveInProgress = false;
+// Module-level guard — prevents concurrent saves from racing each other. Keyed by
+// userId (rather than a single shared boolean) because this module can now run in a
+// server/API-route context (see planRegeneration.ts) where a single warm Node process
+// handles requests for many different users — a single flag would let one user's
+// in-flight save cause another, unrelated user's save to silently no-op.
+const _saveInProgress = new Set<string>();
 
-export async function saveActions(actions: ExecutionAction[], userId: string): Promise<void> {
-  if (_saveInProgress) return;
-  _saveInProgress = true;
+export async function saveActions(actions: ExecutionAction[], userId: string, client?: SupabaseClient): Promise<void> {
+  if (_saveInProgress.has(userId)) return;
+  _saveInProgress.add(userId);
   try {
-    const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
-    const sb = getBrowserSupabaseClient();
+    let sb = client;
+    if (!sb) {
+      const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
+      sb = getBrowserSupabaseClient();
+    }
 
     // 1. Fetch titles of already-completed actions so we can preserve them exactly as-is.
     //    We skip regenerating any action whose title matches a completed one — the user's
@@ -418,6 +429,6 @@ export async function saveActions(actions: ExecutionAction[], userId: string): P
 
     if (upsertError) throw new Error(`saveActions upsert failed: ${upsertError.message}`);
   } finally {
-    _saveInProgress = false;
+    _saveInProgress.delete(userId);
   }
 }

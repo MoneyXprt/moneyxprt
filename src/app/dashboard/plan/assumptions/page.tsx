@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generateBaselinePlan, generatePreviewPlan } from '@/app/lib/planGenerator';
+import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
+import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { SimulatableDebt } from '@/app/lib/debtPayoff';
@@ -395,7 +397,7 @@ export default function AssumptionsPage() {
 
   // ── Save handler ─────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!session || !constraints || !profile) return;
+    if (!session || !constraints || !profile || !snapshot) return;
     setSaving(true);
     setSaveError(null);
     const sb = getBrowserSupabaseClient();
@@ -426,8 +428,57 @@ export default function AssumptionsPage() {
       // not be overwritten here.
 
       // Update freedom_number_monthly if lever was changed
+      const newFreedomNumber = freedomNumberLever !== profile.monthlyTarget ? freedomNumberLever : profile.monthlyTarget;
       if (freedomNumberLever !== profile.monthlyTarget) {
         await sb.from('freedom_profiles').update({ freedom_number_monthly: freedomNumberLever }).eq('user_id', uid);
+      }
+
+      // Regenerate + persist execution_actions synchronously here, rather than relying
+      // solely on Plan Results' own regeneration-on-visit (the router.push below always
+      // lands there and would redo this anyway — see plan/results/page.tsx's buildPlan).
+      // Needed for correctness when the save doesn't end in a Plan Results visit that
+      // actually reaches its regeneration step (e.g. a partner-view visitor never
+      // triggers it there at all), and so Execute reflects the change immediately
+      // instead of requiring a separate manual "Refresh actions". Uses
+      // generateBaselinePlan (no incomeAssumptions) — the same true no-assumptions
+      // baseline Plan Results persists — so the actions saved here are never derived
+      // from a different roadmap than what generated_plans will independently end up
+      // holding a moment later. Never blocks the save/redirect on failure.
+      try {
+        const currentYear = new Date().getFullYear();
+        const [{ data: bonusPlanRow }, { data: repsRows }] = await Promise.all([
+          sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', uid).maybeSingle(),
+          sb.from('material_participation_logs').select('hours_logged')
+            .eq('user_id', uid)
+            .gte('date', `${currentYear}-01-01`)
+            .lt('date', `${currentYear + 1}-01-01`),
+        ]);
+        const bonusPlan: BonusPlan | null = bonusPlanRow ? {
+          frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
+          planAmount:   Number(bonusPlanRow.plan_amount),
+          paymentMonth: bonusPlanRow.payment_month,
+        } : null;
+        const repsHoursThisYear = (repsRows ?? []).reduce((s, r) => s + Number(r.hours_logged ?? 0), 0);
+
+        const inputs: PlanInputs = {
+          freedomProfile: { visionText: profile.visionText, targetFreeAge: profile.targetFreeAge, freedomType: profile.freedomType },
+          freedomNumber: { monthlyTarget: newFreedomNumber, portfolioTarget: profile.portfolioTarget, breakdown: profile.breakdown },
+          snapshot,
+          assetPreferences: assetPrefs,
+          constraints: {
+            capitalPerYear:  constraints.capitalPerYear,
+            hoursPerWeek:    constraints.hoursPerWeek,
+            riskTolerance:   constraints.riskTolerance,
+            hardConstraints: constraints.hardConstraints,
+          },
+          financialPhase,
+          debts,
+        };
+        const generated = generateBaselinePlan(inputs);
+        const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase);
+        await saveActions(execActions, uid);
+      } catch (err) {
+        console.warn('Action regeneration on assumptions save failed:', err instanceof Error ? err.message : err);
       }
 
       router.push('/dashboard/plan/results');

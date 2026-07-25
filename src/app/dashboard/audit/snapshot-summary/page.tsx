@@ -26,16 +26,19 @@ function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
-function computeTotalDebt(s: FinancialSnapshot): number {
-  return s.carLoanBalance + s.studentLoanBalance + s.personalLoanBalance +
-         s.creditCardBalance + s.businessLoanBalance + s.otherDebtBalance;
+// debts (the live table) is the source of truth for anyone already tracked there —
+// same pattern as audit/results/page.tsx's "Debt costing you money" card. Takes the
+// already-fetched live sum rather than deriving it from the (potentially stale)
+// snapshot fields; see load()'s debts query below.
+function computeTotalDebt(liveDebtTotal: number): number {
+  return liveDebtTotal;
 }
 
-function computeNetWorth(s: FinancialSnapshot): number {
+function computeNetWorth(s: FinancialSnapshot, liveDebtTotal: number): number {
   const assets = s.homeEquity + s.rentalPropertyValue + s.retirementBalance +
                  s.traditionalIraBalance + s.taxableBrokerageBalance + s.emergencyFund +
                  s.businessEquityValue;
-  const liabilities = s.rentalMortgageBalance + computeTotalDebt(s);
+  const liabilities = s.rentalMortgageBalance + computeTotalDebt(liveDebtTotal);
   return assets - liabilities;
 }
 
@@ -97,6 +100,7 @@ export default function SnapshotSummaryPage() {
   const [error,    setError]    = useState<string | null>(null);
   const [bonusPlan, setBonusPlan]         = useState<BonusPlan | null>(null);
   const [bonusPayments, setBonusPayments] = useState<BonusPayment[]>([]);
+  const [liveDebtTotal, setLiveDebtTotal] = useState(0);
 
   const load = useCallback(async (s: Session) => {
     try {
@@ -109,9 +113,12 @@ export default function SnapshotSummaryPage() {
       setResults(evaluateAll(latest));
 
       const sb = getBrowserSupabaseClient();
-      const [{ data: bonusPlanRow }, { data: bonusPaymentRows }] = await Promise.all([
+      const [{ data: bonusPlanRow }, { data: bonusPaymentRows }, { data: debtRows }] = await Promise.all([
         sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', s.user.id).maybeSingle(),
         sb.from('bonus_payments_actual').select('amount, net_amount, date_paid').eq('user_id', s.user.id),
+        // Debt total — fetched fresh every load (never cached/stored), same pattern as
+        // audit/results/page.tsx's "Debt costing you money" card.
+        sb.from('debts').select('current_balance').eq('user_id', s.user.id).eq('is_active', true),
       ]);
       setBonusPlan(bonusPlanRow ? {
         frequency:    bonusPlanRow.frequency as BonusPlan['frequency'],
@@ -123,6 +130,7 @@ export default function SnapshotSummaryPage() {
         datePaid:  new Date(r.date_paid),
         netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
       })));
+      setLiveDebtTotal((debtRows ?? []).reduce((sum, d) => sum + Number(d.current_balance), 0));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load snapshot.');
     } finally {
@@ -173,12 +181,12 @@ export default function SnapshotSummaryPage() {
   const monthlySpend       = s.monthlySpend > 0 ? s.monthlySpend : s.essentialMonthlySpend + s.discretionaryMonthlySpend;
   const emergencyMonths    = monthlySpend > 0 ? s.emergencyFund / monthlySpend : 0;
   const grossAnnual        = computeGrossAnnualIncome(s);
-  const totalDebt          = computeTotalDebt(s);
+  const totalDebt          = computeTotalDebt(liveDebtTotal);
   const debtToIncome       = grossAnnual > 0 ? totalDebt / grossAnnual : 0;
   const effectiveTaxRate   = grossAnnual > 0 ? s.currentTaxPaid / grossAnnual : 0;
   const totalAssets        = s.homeEquity + s.rentalPropertyValue + s.retirementBalance +
                              s.traditionalIraBalance + s.taxableBrokerageBalance + s.emergencyFund + s.businessEquityValue;
-  const netWorth           = computeNetWorth(s);
+  const netWorth           = computeNetWorth(s, liveDebtTotal);
 
   const efColor: 'green' | 'amber' | 'red' = emergencyMonths >= 6 ? 'green' : emergencyMonths >= 3 ? 'amber' : 'red';
   const dtiColor: 'green' | 'amber' | 'red' = debtToIncome <= 0.2 ? 'green' : debtToIncome <= 0.4 ? 'amber' : 'red';

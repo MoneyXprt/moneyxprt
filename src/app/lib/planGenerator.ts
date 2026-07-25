@@ -11,6 +11,7 @@ import { evaluateAll } from '@/app/lib/strategies';
 import { simulateDebtSnowballPayoff, computeDebtPayoffOrder, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from '@/app/lib/financialPhase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ─── Input / output types ─────────────────────────────────────────────────────
 
@@ -933,9 +934,12 @@ export function generatePreviewPlan(inputs: PlanInputs, incomeAssumptions: Incom
 
 // ─── Persistence layer ────────────────────────────────────────────────────────
 
-export async function savePlan(plan: GeneratedPlan, userId: string): Promise<string> {
-  const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
-  const sb = getBrowserSupabaseClient();
+export async function savePlan(plan: GeneratedPlan, userId: string, client?: SupabaseClient): Promise<string> {
+  let sb = client;
+  if (!sb) {
+    const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
+    sb = getBrowserSupabaseClient();
+  }
 
   const projectedFreedomDate =
     plan.freedomGap.projectedFreedomYear > 0
