@@ -7,7 +7,8 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { ExecutionAction } from '@/app/lib/actionGenerator';
-import type { GeneratedPlan } from '@/app/lib/planGenerator';
+import { computeRepsRelevance } from '@/app/lib/planGenerator';
+import type { GeneratedPlan, AssetRoadmapRow } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { Session } from '@supabase/supabase-js';
@@ -358,6 +359,8 @@ export default function ExecutePage() {
   const [justCompleted, setJustCompleted]   = useState<Set<string>>(new Set());
   const [visionText, setVisionText]         = useState<string | null>(null);
   const [milestoneOverlay, setMilestoneOverlay] = useState<ExecutionAction | null>(null);
+  // Same 2-year-window check gating the REPS Hours widget/QuickActions tile on Home.
+  const [repsRelevant, setRepsRelevant]     = useState(false);
   // Partner context
   const [isPartnerView, setIsPartnerView]   = useState(false);
   const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
@@ -423,6 +426,7 @@ export default function ExecutePage() {
     };
 
     setFreedomYear(plan.freedomGap.projectedFreedomYear);
+    setRepsRelevant(computeRepsRelevance(snapshotResult.currentlyOwnsRental, plan.assetRoadmap).relevant);
 
     const bonusPlanRow = bonusPlanResult.data;
     const bonusPlan: BonusPlan | null = bonusPlanRow ? {
@@ -504,17 +508,30 @@ export default function ExecutePage() {
 
     if (actionRows && actionRows.length > 0) {
       setActions(actionRows as ExecutionAction[]);
-      const { data: planRow } = await sb
-        .from('generated_plans')
-        .select('freedom_gap')
-        .eq('user_id', primaryUserId)
-        .eq('is_current', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [{ data: planRow }, { data: snapshotRow }] = await Promise.all([
+        sb
+          .from('generated_plans')
+          .select('freedom_gap, asset_roadmap')
+          .eq('user_id', primaryUserId)
+          .eq('is_current', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        sb
+          .from('financial_snapshots')
+          .select('currently_owns_rental')
+          .eq('user_id', primaryUserId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
       if (planRow?.freedom_gap) {
         setFreedomYear((planRow.freedom_gap as GeneratedPlan['freedomGap']).projectedFreedomYear);
       }
+      setRepsRelevant(computeRepsRelevance(
+        !!snapshotRow?.currently_owns_rental,
+        (planRow?.asset_roadmap as AssetRoadmapRow[] | undefined) ?? [],
+      ).relevant);
       setLoading(false);
       return;
     }
@@ -732,7 +749,7 @@ export default function ExecutePage() {
             )}
           </div>
         ) : (
-          <main className="max-w-lg mx-auto px-4 pt-28 pb-5 space-y-6">
+          <main className="max-w-lg mx-auto px-4 pt-28 pb-24 space-y-6">
 
             {/* Partner banner */}
             {isPartnerView && (
@@ -886,18 +903,20 @@ export default function ExecutePage() {
               </div>
             )}
 
-            {/* Log hours link */}
-            <div className="border-t border-gray-100 pt-4">
-              <Link
-                href="/dashboard/logs"
-                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 transition py-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Log REPS hours →
-              </Link>
-            </div>
+            {/* Log hours link — same repsRelevant gate as Home's REPS Hours widget/tile */}
+            {repsRelevant && (
+              <div className="border-t border-gray-100 pt-4">
+                <Link
+                  href="/dashboard/logs"
+                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 transition py-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Log REPS hours →
+                </Link>
+              </div>
+            )}
 
           </main>
         )}
