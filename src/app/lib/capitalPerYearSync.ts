@@ -29,7 +29,7 @@ export async function syncCapitalPerYear(sb: SupabaseClient, userId: string): Pr
       .eq('user_id', userId)
       .maybeSingle(),
     sb.from('bonus_payments_actual')
-      .select('amount, net_amount, date_paid')
+      .select('amount, net_amount, deployable_amount, date_paid')
       .eq('user_id', userId),
   ]);
 
@@ -44,9 +44,10 @@ export async function syncCapitalPerYear(sb: SupabaseClient, userId: string): Pr
   } : null;
 
   const bonusPayments: BonusPayment[] = (bonusPaymentRows ?? []).map(r => ({
-    amount:    Number(r.amount),
-    datePaid:  new Date(r.date_paid),
-    netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
+    amount:           Number(r.amount),
+    datePaid:         new Date(r.date_paid),
+    netAmount:        r.net_amount != null ? Number(r.net_amount) : undefined,
+    deployableAmount: r.deployable_amount != null ? Number(r.deployable_amount) : undefined,
   }));
 
   const capitalPerYear = Math.round(computeAnnualDeployableTotal(snapshot, bonusPlan, bonusPayments));

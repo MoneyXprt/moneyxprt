@@ -115,7 +115,7 @@ export default function SnapshotSummaryPage() {
       const sb = getBrowserSupabaseClient();
       const [{ data: bonusPlanRow }, { data: bonusPaymentRows }, { data: debtRows }] = await Promise.all([
         sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', s.user.id).maybeSingle(),
-        sb.from('bonus_payments_actual').select('amount, net_amount, date_paid').eq('user_id', s.user.id),
+        sb.from('bonus_payments_actual').select('amount, net_amount, deployable_amount, date_paid').eq('user_id', s.user.id),
         // Debt total — fetched fresh every load (never cached/stored), same pattern as
         // audit/results/page.tsx's "Debt costing you money" card.
         sb.from('debts').select('current_balance').eq('user_id', s.user.id).eq('is_active', true),
@@ -126,9 +126,10 @@ export default function SnapshotSummaryPage() {
         paymentMonth: bonusPlanRow.payment_month,
       } : null);
       setBonusPayments((bonusPaymentRows ?? []).map(r => ({
-        amount:    Number(r.amount),
-        datePaid:  new Date(r.date_paid),
-        netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
+        amount:           Number(r.amount),
+        datePaid:         new Date(r.date_paid),
+        netAmount:        r.net_amount != null ? Number(r.net_amount) : undefined,
+        deployableAmount: r.deployable_amount != null ? Number(r.deployable_amount) : undefined,
       })));
       setLiveDebtTotal((debtRows ?? []).reduce((sum, d) => sum + Number(d.current_balance), 0));
     } catch (e) {

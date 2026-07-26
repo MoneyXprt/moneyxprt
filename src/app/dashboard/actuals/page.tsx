@@ -14,6 +14,7 @@ interface UnappliedBonusRow {
   id: string;
   amount: number;
   net_amount: number | null;
+  deployable_amount: number | null;
   date_paid: string;
 }
 
@@ -153,7 +154,7 @@ export default function ActualsPage() {
     const sb = getBrowserSupabaseClient();
     const { data } = await sb
       .from('bonus_payments_actual')
-      .select('id, amount, net_amount, date_paid')
+      .select('id, amount, net_amount, deployable_amount, date_paid')
       .eq('user_id', userId)
       .eq('applied_to_debt', false)
       .order('date_paid', { ascending: false });
@@ -196,7 +197,7 @@ export default function ActualsPage() {
         return;
       }
 
-      const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
+      const appliedAmount = bonus.deployable_amount ?? bonus.net_amount ?? estimateNetBonus(bonus.amount);
 
       // Cascading — a lump sum can exceed the top debt's balance, in which case the
       // remainder rolls into subsequently-ranked active debts (each getting its own
@@ -307,7 +308,7 @@ export default function ActualsPage() {
         {unappliedBonuses.length > 0 && (
           <div className="space-y-3">
             {unappliedBonuses.map(bonus => {
-              const appliedAmount = bonus.net_amount ?? estimateNetBonus(bonus.amount);
+              const appliedAmount = bonus.deployable_amount ?? bonus.net_amount ?? estimateNetBonus(bonus.amount);
               const isNetKnown    = bonus.net_amount != null;
               return (
                 <div key={bonus.id} className="bg-white rounded-2xl border border-indigo-100 shadow-sm px-5 py-4">

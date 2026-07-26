@@ -443,7 +443,7 @@ export default function Phase2Page() {
           sb.from('user_constraints').select('hours_per_week,risk_tolerance,hard_constraints').eq('user_id', uid).maybeSingle(),
           sb.from('plan_assumptions').select('*').eq('user_id', uid).maybeSingle(),
           sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', uid).maybeSingle(),
-          sb.from('bonus_payments_actual').select('amount, net_amount, date_paid').eq('user_id', uid),
+          sb.from('bonus_payments_actual').select('amount, net_amount, deployable_amount, date_paid').eq('user_id', uid),
         ]);
 
       setBonusPlan(bonusPlanRow ? {
@@ -452,9 +452,10 @@ export default function Phase2Page() {
         paymentMonth: bonusPlanRow.payment_month,
       } : null);
       setBonusPayments((bonusPaymentRows ?? []).map(r => ({
-        amount:    Number(r.amount),
-        datePaid:  new Date(r.date_paid),
-        netAmount: r.net_amount != null ? Number(r.net_amount) : undefined,
+        amount:           Number(r.amount),
+        datePaid:         new Date(r.date_paid),
+        netAmount:        r.net_amount != null ? Number(r.net_amount) : undefined,
+        deployableAmount: r.deployable_amount != null ? Number(r.deployable_amount) : undefined,
       })));
 
       if (snapResult) {

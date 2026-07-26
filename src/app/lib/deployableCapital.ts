@@ -16,6 +16,7 @@ export interface BonusPayment {
   amount: number;
   datePaid: Date;
   netAmount?: number; // actual take-home amount if known; falls back to estimated withholding
+  deployableAmount?: number; // remaining amount still available after real-world spending; falls back to netAmount
 }
 
 function sum(amounts: number[]): number {
@@ -73,7 +74,7 @@ function getEffectiveBonusForPeriod(
 ): PeriodBonusResult {
   const actualInPeriod = actuals.filter(a => a.datePaid >= periodStart && a.datePaid <= periodEnd);
   if (actualInPeriod.length > 0) {
-    const amount = sum(actualInPeriod.map(a => a.netAmount ?? estimateNetBonus(a.amount)));
+    const amount = sum(actualInPeriod.map(a => a.deployableAmount ?? a.netAmount ?? estimateNetBonus(a.amount)));
     const source: BonusAmountSource = actualInPeriod.every(a => a.netAmount != null) ? 'actual' : 'estimated';
     return { amount, source };
   }

@@ -12,6 +12,7 @@ interface BonusPaymentRow {
   id: string;
   amount: number;
   net_amount: number | null;
+  deployable_amount: number | null;
   date_paid: string;
   created_at: string;
 }
@@ -107,9 +108,10 @@ export default function BonusLogPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
-  const [amount, setAmount]       = useState('');
-  const [netAmount, setNetAmount] = useState('');
-  const [datePaid, setDatePaid]   = useState(todayIso());
+  const [amount, setAmount]             = useState('');
+  const [netAmount, setNetAmount]       = useState('');
+  const [deployableAmount, setDeployableAmount] = useState('');
+  const [datePaid, setDatePaid]         = useState(todayIso());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -135,7 +137,7 @@ export default function BonusLogPage() {
     const sb = getBrowserSupabaseClient();
     const { data, error } = await sb
       .from('bonus_payments_actual')
-      .select('id, amount, net_amount, date_paid, created_at')
+      .select('id, amount, net_amount, deployable_amount, date_paid, created_at')
       .eq('user_id', session.user.id)
       .order('date_paid', { ascending: false });
     if (error) setListError(error.message);
@@ -170,13 +172,14 @@ export default function BonusLogPage() {
     try {
       const sb = getBrowserSupabaseClient();
       const { error } = await sb.from('bonus_payments_actual').insert({
-        user_id:    session.user.id,
-        amount:     n(amount),
-        net_amount: netAmount.trim() ? n(netAmount) : null,
-        date_paid:  datePaid,
+        user_id:           session.user.id,
+        amount:            n(amount),
+        net_amount:        netAmount.trim() ? n(netAmount) : null,
+        deployable_amount: deployableAmount.trim() ? n(deployableAmount) : null,
+        date_paid:         datePaid,
       });
       if (error) throw error;
-      setAmount(''); setNetAmount(''); setDatePaid(todayIso());
+      setAmount(''); setNetAmount(''); setDeployableAmount(''); setDatePaid(todayIso());
       await fetchPayments();
 
       // A logged/edited bonus payment changes computeAnnualDeployableTotal's result —
@@ -290,6 +293,18 @@ export default function BonusLogPage() {
               </div>
             </div>
             <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">How much of this is still available to deploy? (optional — leave blank if all of it is)</label>
+              <p className="text-xs text-gray-400 mb-1.5">If you&apos;ve already spent some of the net amount on real expenses (tuition, etc.), enter what&apos;s left.</p>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-sm pointer-events-none">$</span>
+                <input type="text" inputMode="numeric"
+                  value={deployableAmount ? Number(deployableAmount).toLocaleString('en-US') : deployableAmount}
+                  onChange={e => setDeployableAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="0"
+                  className="w-full pl-7 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition" />
+              </div>
+            </div>
+            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Date paid</label>
               <input type="date" required value={datePaid} onChange={e => setDatePaid(e.target.value)}
                 onClick={openDatePicker} onFocus={openDatePicker}
@@ -329,6 +344,7 @@ export default function BonusLogPage() {
                     <p className="text-xs text-gray-400">
                       {formatDate(p.date_paid)}
                       {p.net_amount != null && ` — ${fmt(Number(p.net_amount))} net`}
+                      {p.deployable_amount != null && ` — ${fmt(Number(p.deployable_amount))} still deployable`}
                     </p>
                   </div>
                   <button onClick={() => handleDelete(p.id)}
