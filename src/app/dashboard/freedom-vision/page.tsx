@@ -495,7 +495,7 @@ export default function FreedomVisionPage() {
 
       const { data } = await sb
         .from('freedom_profiles')
-        .select('id, vision_text, target_free_age, childhood_dream, identity_shift, relationship_impact, time_use_preference, cost_of_waiting')
+        .select('id, vision_text, target_free_age, current_age, childhood_dream, identity_shift, relationship_impact, time_use_preference, cost_of_waiting')
         .eq('user_id', s.user.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -514,6 +514,7 @@ export default function FreedomVisionPage() {
       if (data.time_use_preference) setTimeUsePreference(data.time_use_preference as string);
       if (data.cost_of_waiting)     setCostOfWaiting(data.cost_of_waiting as string);
       if (data.target_free_age)     setTargetAge(Number(data.target_free_age));
+      if (data.current_age != null) setCurrentAge(Number(data.current_age));
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
@@ -538,6 +539,7 @@ export default function FreedomVisionPage() {
       user_id:              userId,
       vision_text:          visionText.trim() || null,
       target_free_age:      targetAge,
+      current_age:          currentAge,
       freedom_type:         fType,
       childhood_dream:      childhoodDream.trim() || null,
       identity_shift:       identityShift.trim() || null,
