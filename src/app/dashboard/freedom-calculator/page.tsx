@@ -452,7 +452,8 @@ export default function FreedomCalculatorPage() {
       )}
 
       {/* ── Main content ────────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6 flex flex-col gap-4">
+      <main className="flex-1 max-w-lg mx-auto w-full px-4 pt-6 flex flex-col gap-4"
+        style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
 
         {isResultsStep ? (
           <ResultsScreen

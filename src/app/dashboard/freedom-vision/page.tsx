@@ -155,8 +155,8 @@ function Shell({
         </div>
       </header>
       <main
-        className="flex-1 max-w-lg mx-auto w-full px-4 py-6 flex flex-col"
-        style={{ transition: 'opacity 0.15s', opacity: fading ? 0 : 1 }}>
+        className="flex-1 max-w-lg mx-auto w-full px-4 pt-6 flex flex-col"
+        style={{ transition: 'opacity 0.15s', opacity: fading ? 0 : 1, paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
         {children}
       </main>
     </div>
