@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
+// ─── Theme (matches freedom-vision's dark palette) ────────────────────────────
+
+const GOLD   = '#C9A84C';
+const FOREST = '#1B3A2D';
+
 // ─── Category definitions ─────────────────────────────────────────────────────
 
 interface Category {
@@ -239,8 +244,8 @@ function ResultsScreen({
       </div>
 
       {/* Explanation */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
-        <p className="text-sm text-gray-700 leading-relaxed">
+      <div className="rounded-2xl p-5 mb-4" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <p className="text-sm text-white/70 leading-relaxed">
           To be free, you need a portfolio generating{' '}
           <strong>{fmtMoney(total)}/month</strong> passively.
           At a 4% safe withdrawal rate, that&apos;s{' '}
@@ -250,20 +255,20 @@ function ResultsScreen({
       </div>
 
       {/* Category breakdown */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-4">
-        <div className="px-4 py-3 border-b border-gray-50">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Breakdown</p>
+      <div className="rounded-2xl overflow-hidden mb-4" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <p className="text-xs font-semibold text-white/40 uppercase tracking-wide">Breakdown</p>
         </div>
-        <div className="divide-y divide-gray-50">
+        <div>
           {CATEGORIES.map((cat, i) => (
-            <div key={cat.key} className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm text-gray-700">{cat.label}</span>
-              <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmtMoney(values[i])}</span>
+            <div key={cat.key} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-sm text-white/70">{cat.label}</span>
+              <span className="text-sm font-semibold text-white tabular-nums">{fmtMoney(values[i])}</span>
             </div>
           ))}
-          <div className="flex items-center justify-between px-4 py-3 bg-emerald-50/60">
-            <span className="text-sm font-bold text-gray-900">Monthly total</span>
-            <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtMoney(total)}</span>
+          <div className="flex items-center justify-between px-4 py-3" style={{ background: 'rgba(201,168,76,0.12)' }}>
+            <span className="text-sm font-bold text-white">Monthly total</span>
+            <span className="text-sm font-bold tabular-nums" style={{ color: GOLD }}>{fmtMoney(total)}</span>
           </div>
         </div>
       </div>
@@ -286,7 +291,8 @@ function ResultsScreen({
       </button>
 
       <button onClick={onBack}
-        className="w-full py-3 rounded-2xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition">
+        className="w-full py-3 rounded-2xl border text-sm font-medium text-white/60 hover:bg-white/[0.08] transition"
+        style={{ borderColor: 'rgba(255,255,255,0.18)' }}>
         ← Review my numbers
       </button>
     </div>
@@ -400,20 +406,20 @@ export default function FreedomCalculatorPage() {
   const isResultsStep = step === CATEGORIES.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: FOREST }}>
 
       {/* ── Nav ────────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+      <header className="sticky top-0 z-10" style={{ background: FOREST, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: GOLD }}>
+              <svg className="w-4 h-4" style={{ color: FOREST }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.82m5.84-2.56a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.82m2.56-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
               </svg>
             </div>
-            <span className="font-semibold text-gray-900 text-sm">Freedom Calculator</span>
+            <span className="font-semibold text-white text-sm">Freedom Calculator</span>
           </div>
-          <span className="text-xs text-gray-400 tabular-nums">
+          <span className="text-xs text-white/40 tabular-nums">
             {isResultsStep ? 'Complete' : `${step + 1} / ${CATEGORIES.length}`}
           </span>
         </div>
@@ -421,18 +427,18 @@ export default function FreedomCalculatorPage() {
 
       {/* ── Running total bar ───────────────────────────────────────────── */}
       {!isResultsStep && (
-        <div className="bg-white border-b border-gray-100">
+        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
             <div>
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Running total</p>
-              <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">
+              <p className="text-xs text-white/40 leading-none mb-0.5">Running total</p>
+              <p className="text-2xl font-extrabold tabular-nums leading-none" style={{ color: GOLD }}>
                 {fmtMoney(total)}
-                <span className="text-sm font-normal text-gray-400 ml-1">/mo</span>
+                <span className="text-sm font-normal text-white/40 ml-1">/mo</span>
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-gray-400 leading-none mb-0.5">Portfolio needed</p>
-              <p className="text-base font-bold text-gray-700 tabular-nums">{fmtCompact(total * 300)}</p>
+              <p className="text-xs text-white/40 leading-none mb-0.5">Portfolio needed</p>
+              <p className="text-base font-bold text-white/80 tabular-nums">{fmtCompact(total * 300)}</p>
             </div>
           </div>
           {/* Progress bar */}
@@ -441,9 +447,8 @@ export default function FreedomCalculatorPage() {
               {CATEGORIES.map((_, i) => (
                 <div
                   key={i}
-                  className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                    i < step ? 'bg-emerald-500' : i === step ? 'bg-emerald-300' : 'bg-gray-100'
-                  }`}
+                  className="h-1 flex-1 rounded-full transition-all duration-300"
+                  style={{ background: i < step ? GOLD : i === step ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.12)' }}
                 />
               ))}
             </div>
@@ -466,46 +471,45 @@ export default function FreedomCalculatorPage() {
         ) : (
           <>
             {/* Category card */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
               {/* Category header */}
               <div className="px-5 pt-5 pb-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(201,168,76,0.15)', color: GOLD }}>
                     {cat.icon}
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-white/40">
                       Category {step + 1} of {CATEGORIES.length}
                     </p>
-                    <h2 className="text-lg font-bold text-gray-900 leading-tight">{cat.label}</h2>
+                    <h2 className="text-lg font-bold text-white leading-tight">{cat.label}</h2>
                   </div>
                 </div>
-                <p className="text-sm text-gray-500">{cat.hint}</p>
+                <p className="text-sm text-white/55">{cat.hint}</p>
               </div>
 
               {/* Input */}
               <div className="px-5 pb-5">
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-4 flex items-center text-gray-400 text-2xl font-light pointer-events-none">$</span>
+                  <span className="absolute inset-y-0 left-4 flex items-center text-white/40 text-2xl font-light pointer-events-none">$</span>
                   <input
                     ref={inputRef}
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    min="0"
-                    step="50"
-                    value={values[step] === 0 ? '' : values[step]}
+                    value={values[step] === 0 ? '' : values[step].toLocaleString('en-US')}
                     placeholder={String(cat.defaultValue)}
-                    onChange={e => setValue(step, e.target.value)}
-                    className="w-full pl-10 pr-16 py-4 text-3xl font-bold text-gray-900 rounded-xl border-2 border-gray-200 focus:border-emerald-500 focus:outline-none tabular-nums transition"
+                    onChange={e => setValue(step, e.target.value.replace(/[^0-9]/g, ''))}
+                    className="w-full pl-10 pr-16 py-4 text-3xl font-bold text-white rounded-xl focus:outline-none tabular-nums transition"
+                    style={{ background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.18)' }}
                   />
-                  <span className="absolute inset-y-0 right-4 flex items-center text-gray-400 text-sm pointer-events-none">/mo</span>
+                  <span className="absolute inset-y-0 right-4 flex items-center text-white/40 text-sm pointer-events-none">/mo</span>
                 </div>
               </div>
             </div>
 
             {/* Context card */}
-            <div className="bg-emerald-50/60 rounded-xl border border-emerald-100 px-4 py-3">
-              <p className="text-xs text-emerald-800 leading-relaxed">{cat.description}</p>
+            <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.25)' }}>
+              <p className="text-xs text-white/70 leading-relaxed">{cat.description}</p>
             </div>
 
             {/* Navigation */}
@@ -513,29 +517,18 @@ export default function FreedomCalculatorPage() {
               <button
                 onClick={() => setStep(s => s - 1)}
                 disabled={step === 0}
-                className="flex-1 py-4 rounded-2xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                className="flex-1 py-4 rounded-2xl border text-sm font-medium text-white/60 hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed transition"
+                style={{ borderColor: 'rgba(255,255,255,0.18)' }}
               >
                 ← Back
               </button>
               <button
                 onClick={() => setStep(s => s + 1)}
-                className="flex-[2] py-4 rounded-2xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"
+                className="flex-[2] py-4 rounded-2xl font-bold transition active:scale-[0.98]"
+                style={{ background: GOLD, color: FOREST }}
               >
                 {step === CATEGORIES.length - 1 ? 'See my freedom number →' : 'Next →'}
               </button>
-            </div>
-
-            {/* Dot stepper */}
-            <div className="flex justify-center gap-1.5 pb-2">
-              {CATEGORIES.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setStep(i)}
-                  className={`rounded-full transition-all ${
-                    i === step ? 'w-5 h-2 bg-emerald-600' : i < step ? 'w-2 h-2 bg-emerald-300' : 'w-2 h-2 bg-gray-200'
-                  }`}
-                />
-              ))}
             </div>
           </>
         )}
