@@ -25,7 +25,7 @@ const CATEGORIES: Category[] = [
       '$4,000/month covers a comfortable home in most mid-tier markets. ' +
       'Coastal spots like Carlsbad, CA or Austin, TX run $5,000–$6,500. ' +
       'Be honest about where you actually want to live.',
-    defaultValue: 4_000,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
@@ -40,7 +40,7 @@ const CATEGORIES: Category[] = [
       'Without an employer, you\'re buying on the open market. A family plan ' +
       'typically runs $1,200–$1,800/month depending on age, coverage tier, ' +
       'and state. Budget for the real number, not the wishful one.',
-    defaultValue: 1_500,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
@@ -55,7 +55,7 @@ const CATEGORIES: Category[] = [
       '$2,000/month for a family of 4 is realistic but tight. ' +
       '$2,500–$3,000 if you eat out regularly or live in a high-cost area. ' +
       'Include the Sunday farmers market and date nights.',
-    defaultValue: 2_000,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 20.488V18a2.25 2.25 0 00-2.25-2.25h-1.5A2.25 2.25 0 009 18v2.488m3 0h.008v.015H12v-.015zm0 0H9.75m2.25 0H14.25" />
@@ -70,7 +70,7 @@ const CATEGORIES: Category[] = [
       '$1,200/month covers a mid-range car payment ($600), insurance ($250), ' +
       'fuel ($200), and maintenance/registration ($150). ' +
       'Go car-free or drive paid-off vehicles to drop this significantly.',
-    defaultValue: 1_200,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
@@ -85,7 +85,7 @@ const CATEGORIES: Category[] = [
       'This is the whole point. $1,500/month ($18k/year) covers 2–3 solid ' +
       'family trips, regular weekend experiences, and hobbies. ' +
       'If travel is a core value, size this up — this is freedom, not retirement.',
-    defaultValue: 1_500,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
@@ -100,7 +100,7 @@ const CATEGORIES: Category[] = [
       '$1,500/month is a realistic floor for one or two school-age kids ' +
       '(activities, gear, enrichment). Private school or college savings ' +
       'can push this to $3,000–$5,000+. Build in what you actually want for them.',
-    defaultValue: 1_500,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" />
@@ -115,7 +115,7 @@ const CATEGORIES: Category[] = [
       'Freedom doesn\'t mean stopping wealth-building. $1,000/month keeps ' +
       'you compounding, covers irregular large expenses (roof, car, ' +
       'medical), and gives you peace of mind. Think of it as your runway margin.',
-    defaultValue: 1_000,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
@@ -130,7 +130,7 @@ const CATEGORIES: Category[] = [
       '$500/month is intentionally lean. You\'ve already built buffers ' +
       'elsewhere. This covers streaming, phone, haircuts, birthday gifts, ' +
       'and the random things you can\'t predict. Go higher if your lifestyle warrants it.',
-    defaultValue: 500,
+    defaultValue: 0,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
