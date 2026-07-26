@@ -433,8 +433,7 @@ export default function SettingsPage() {
       }
     }
 
-    sessionStorage.setItem('mxprt_fresh_audit', '1');
-    router.push('/dashboard/freedom-vision?fresh=true');
+    router.push('/dashboard/freedom-vision');
   }
 
   // ── Guards ─────────────────────────────────────────────────────────────────
@@ -535,7 +534,7 @@ export default function SettingsPage() {
               {rebuilding && (
                 <span className="inline-block w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
               )}
-              {rebuilding ? 'Clearing plan data…' : 'Rebuild my plan from scratch'}
+              {rebuilding ? 'Clearing plan data…' : 'Regenerate my plan'}
             </button>
             {error && (
               <p className="text-xs text-red-500 leading-snug">{error}</p>
