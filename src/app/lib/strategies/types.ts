@@ -23,6 +23,8 @@ export interface FinancialSnapshot {
   primaryHoursPerWeekInBusiness: number;
   hasDedicatedHomeOffice: boolean;
   homeOfficeSquareFootage: number;
+  isNewBusiness: boolean;
+  startupCostsIncurred: number;
   // ── Spouse income ────────────────────────────────────────────────────────────
   spouseW2Income: number;
   spouseBusinessRevenue: number;

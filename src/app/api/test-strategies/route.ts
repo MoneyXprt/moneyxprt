@@ -22,6 +22,8 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
   primaryHoursPerWeekInBusiness:  5,
   hasDedicatedHomeOffice:         false,
   homeOfficeSquareFootage:        0,
+  isNewBusiness:                  false,
+  startupCostsIncurred:           0,
   spouseW2Income:                 0,
   spouseBusinessRevenue:          0,
   spouseBusinessNetProfit:        0,

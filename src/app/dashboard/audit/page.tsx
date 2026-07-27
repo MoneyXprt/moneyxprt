@@ -30,6 +30,7 @@ interface FormState {
   hasBusinessEntity: boolean; businessRevenue: string; primaryBusinessNetProfit: string;
   primaryBusinessType: string; primaryHoursPerWeekInBusiness: string;
   hasDedicatedHomeOffice: boolean; homeOfficeSquareFootage: string;
+  isNewBusiness: boolean; startupCostsIncurred: string;
   spouseHasSeparateBusiness: boolean; spouseBusinessType: string;
   hasHsaAvailable: boolean; employer401kAllowsAfterTax: boolean | undefined;
   hasCpa: boolean | undefined; cpaProactive: boolean | undefined;
@@ -72,6 +73,7 @@ const EMPTY: FormState = {
   hasBusinessEntity: false, businessRevenue: '', primaryBusinessNetProfit: '',
   primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
   hasDedicatedHomeOffice: false, homeOfficeSquareFootage: '',
+  isNewBusiness: false, startupCostsIncurred: '',
   spouseHasSeparateBusiness: false, spouseBusinessType: '',
   hasHsaAvailable: false, employer401kAllowsAfterTax: undefined,
   hasCpa: undefined, cpaProactive: undefined,
@@ -131,6 +133,8 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     primaryHoursPerWeekInBusiness:  String(s.primaryHoursPerWeekInBusiness || ''),
     hasDedicatedHomeOffice:         s.hasDedicatedHomeOffice,
     homeOfficeSquareFootage:        String(s.homeOfficeSquareFootage || ''),
+    isNewBusiness:                  s.isNewBusiness,
+    startupCostsIncurred:           String(s.startupCostsIncurred || ''),
     spouseHasSeparateBusiness:  s.spouseBusinessType !== '',
     spouseBusinessType:         s.spouseBusinessType || '',
     hasHsaAvailable:     s.hasHsaAvailable,
@@ -588,6 +592,8 @@ export default function AuditPage() {
         primaryHoursPerWeekInBusiness:  form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
         hasDedicatedHomeOffice:         effectiveHasBusinessEntity ? form.hasDedicatedHomeOffice : false,
         homeOfficeSquareFootage:        effectiveHasBusinessEntity ? n(form.homeOfficeSquareFootage) : 0,
+        isNewBusiness:                  effectiveHasBusinessEntity ? form.isNewBusiness : false,
+        startupCostsIncurred:           effectiveHasBusinessEntity ? n(form.startupCostsIncurred) : 0,
         spouseW2Income:  form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
                            ? n(form.spouseW2Income) : 0,
         spouseBusinessRevenue:  form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
@@ -1116,6 +1122,21 @@ export default function AuditPage() {
                       hint="Used to size the home office deduction (simplified method: $5/sq ft, up to 300 sq ft)."
                       suffix="sq ft" value={form.homeOfficeSquareFootage}
                       onChange={v => set('homeOfficeSquareFootage', v)} placeholder="150" />
+                  )}
+                </div>
+              )}
+
+              {effectiveHasBusinessEntity && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Divider label="Startup Costs" />
+                  <Toggle label="Has your business been operating for less than 24 months?"
+                    value={form.isNewBusiness}
+                    onChange={v => set('isNewBusiness', v)} />
+
+                  {form.isNewBusiness && (
+                    <DollarInput label="Total startup costs incurred before the business began operating"
+                      hint="Market research, advertising, training, professional fees, travel to secure suppliers or customers."
+                      value={form.startupCostsIncurred} onChange={v => set('startupCostsIncurred', v)} />
                   )}
                 </div>
               )}

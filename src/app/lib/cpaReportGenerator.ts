@@ -78,6 +78,7 @@ const IRC_SECTIONS: Record<string, string> = {
   'mega-backdoor-roth':  '§401(a)(31)',
   'reps':                '§469(c)(7)',
   'home-office-deduction': '§280A(c)',
+  'startup-costs':         '§195',
 };
 
 // ─── Documentation requirements per strategy ──────────────────────────────────
@@ -129,6 +130,11 @@ const DOCUMENTATION_REQUIREMENTS: Record<string, string> = {
   'home-office-deduction':
     'Photos of the dedicated space. Floor plan or measurement showing square footage. Note ' +
     'confirming the space is used regularly and exclusively for business — no personal use.',
+
+  'startup-costs':
+    'Itemized list of pre-opening expenses with dated receipts. Documentation of the date the ' +
+    'business began active operations. Note: any amount beyond the $5,000 immediate deduction ' +
+    'is amortized over 180 months (15 years) — track separately for future-year returns.',
 
   '__fallback__':
     'Consult your tax professional for specific documentation requirements for this strategy.',

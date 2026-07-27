@@ -11,6 +11,7 @@ import { sCorpElection }    from './modules/sCorpElection';
 import { qbi }              from './modules/qbi';
 import { accountablePlan }  from './modules/accountablePlan';
 import { homeOfficeDeduction } from './modules/homeOfficeDeduction';
+import { startupCosts }        from './modules/startupCosts';
 
 /**
  * All registered strategy modules.
@@ -29,6 +30,7 @@ export const registry: Strategy[] = [
   qbi,
   accountablePlan,
   homeOfficeDeduction,
+  startupCosts,
 ];
 
 /**
