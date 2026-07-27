@@ -1,0 +1,127 @@
+/**
+ * Section 179 Heavy Vehicle Deduction — IRC § 179
+ *
+ * A business may immediately expense the cost of qualifying property placed
+ * in service during the year, including vehicles rated over 6,000 lbs gross
+ * vehicle weight rating (GVWR) — large SUVs and trucks. Unlike standard
+ * passenger-vehicle depreciation limits, heavy vehicles are exempt from the
+ * luxury-auto depreciation caps, but the §179 deduction for SUVs is itself
+ * capped ($30,500 for 2026) and is only available for the business-use
+ * percentage of the vehicle.
+ *
+ * This is one of the most heavily IRS-scrutinized vehicle deductions: the
+ * business-use percentage must be genuine and documented with a contemporaneous
+ * mileage log, must exceed 50%, and the vehicle must be placed in service the
+ * same year the deduction is claimed.
+ */
+
+import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
+
+const ID   = 'section-179-vehicle';
+const NAME = 'Section 179 Heavy Vehicle Deduction';
+
+/** IRC §179 SUV/heavy-vehicle deduction cap for 2026, and the business-use threshold. */
+const SECTION_179_VEHICLE_CAP    = 30_500;
+const BUSINESS_USE_THRESHOLD_PCT = 50;
+
+export const section179Vehicle: Strategy = {
+  id: ID,
+  name: NAME,
+  category: 'tax',
+
+  evaluate(s: FinancialSnapshot): StrategyResult {
+    const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
+      id: ID,
+      name: NAME,
+      category: 'tax',
+      valueType: 'cash',
+    };
+
+    // ── Gate 1: business entity ─────────────────────────────────────────────
+    if (!s.hasBusinessEntity) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'The §179 heavy vehicle deduction requires a business to place the vehicle in ' +
+          'service for. No business entity is currently on file.',
+        unlockCondition:
+          'Open a business entity (sole proprietorship, single-member LLC, S-Corp, ' +
+          'or partnership).',
+        blockedBy: 'hasBusinessEntity',
+      };
+    }
+
+    // ── Gate 2: heavy vehicle owned or being purchased ──────────────────────
+    if (!s.hasHeavyVehicle) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'The §179 heavy vehicle deduction only applies to vehicles rated over 6,000 lbs ' +
+          'gross vehicle weight rating (GVWR) — large SUVs and trucks. No qualifying vehicle ' +
+          'is currently on file.',
+        unlockCondition:
+          'Confirm your vehicle\'s GVWR (usually on a sticker inside the driver-side door ' +
+          'frame) exceeds 6,000 lbs.',
+        blockedBy: 'hasHeavyVehicle',
+      };
+    }
+
+    // ── Gate 3: business-use percentage must exceed 50% ──────────────────────
+    if (s.vehicleBusinessUsePercent <= BUSINESS_USE_THRESHOLD_PCT) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'Business use must exceed 50% to qualify — this vehicle does not currently meet ' +
+          'that threshold.',
+        unlockCondition:
+          'Increase documented business use above 50% (tracked via a contemporaneous ' +
+          'mileage log), or reconsider whether this vehicle is genuinely a business asset.',
+        blockedBy: 'vehicleBusinessUsePercent',
+      };
+    }
+
+    // ── Gate 4: purchase price recorded ──────────────────────────────────────
+    if (s.vehiclePurchasePrice <= 0) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'Your vehicle qualifies by weight and business-use percentage, but its purchase ' +
+          'price has not been recorded yet — the §179 deduction is calculated directly from ' +
+          'that figure.',
+        unlockCondition: 'Enter the vehicle\'s purchase price.',
+        blockedBy: 'vehiclePurchasePrice',
+      };
+    }
+
+    // ── ACTIVE ────────────────────────────────────────────────────────────────
+    const businessUseFraction  = s.vehicleBusinessUsePercent / 100;
+    const deductibleAmount     = Math.min(s.vehiclePurchasePrice * businessUseFraction, SECTION_179_VEHICLE_CAP);
+    const estimatedAnnualValue = Math.round(deductibleAmount);
+
+    return {
+      ...base,
+      state: 'ACTIVE',
+      estimatedAnnualValue,
+      reason:
+        `Your $${s.vehiclePurchasePrice.toLocaleString()} vehicle, used ` +
+        `${s.vehicleBusinessUsePercent}% for business, qualifies for a §179 deduction of ` +
+        `$${estimatedAnnualValue.toLocaleString()}` +
+        (deductibleAmount >= SECTION_179_VEHICLE_CAP
+          ? ` (capped at the $${SECTION_179_VEHICLE_CAP.toLocaleString()} 2026 SUV/heavy-vehicle limit).`
+          : '.'),
+      cautionNote:
+        'Requires genuine, documented business use exceeding 50% — a mileage log is ' +
+        'mandatory. This is one of the most IRS-scrutinized vehicle deductions; buying a ' +
+        'vehicle primarily for the tax benefit rather than real business need can trigger ' +
+        'disallowance and penalties. Confirm with your CPA before purchasing.',
+    };
+  },
+};

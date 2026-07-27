@@ -33,6 +33,9 @@ export interface SnapshotRow {
   home_office_square_footage: number | null;
   is_new_business: boolean | null;
   startup_costs_incurred: number | null;
+  has_heavy_vehicle: boolean | null;
+  vehicle_purchase_price: number | null;
+  vehicle_business_use_percent: number | null;
   // Spouse
   spouse_w2_income: number;
   spouse_business_revenue: number;
@@ -124,6 +127,9 @@ function toRow(
     home_office_square_footage:         s.homeOfficeSquareFootage,
     is_new_business:                    s.isNewBusiness,
     startup_costs_incurred:             s.startupCostsIncurred,
+    has_heavy_vehicle:                  s.hasHeavyVehicle,
+    vehicle_purchase_price:             s.vehiclePurchasePrice,
+    vehicle_business_use_percent:       s.vehicleBusinessUsePercent,
     spouse_w2_income:                   s.spouseW2Income,
     spouse_business_revenue:            s.spouseBusinessRevenue,
     spouse_business_net_profit:         s.spouseBusinessNetProfit,
@@ -205,6 +211,9 @@ export function fromRow(row: SnapshotRow): FinancialSnapshot {
     homeOfficeSquareFootage:          Number(row.home_office_square_footage ?? 0),
     isNewBusiness:                    Boolean(row.is_new_business),
     startupCostsIncurred:             Number(row.startup_costs_incurred ?? 0),
+    hasHeavyVehicle:                  Boolean(row.has_heavy_vehicle),
+    vehiclePurchasePrice:             Number(row.vehicle_purchase_price ?? 0),
+    vehicleBusinessUsePercent:        Number(row.vehicle_business_use_percent ?? 0),
     spouseW2Income:                   Number(row.spouse_w2_income ?? 0),
     spouseBusinessRevenue:            Number(row.spouse_business_revenue ?? 0),
     spouseBusinessNetProfit:          Number(row.spouse_business_net_profit ?? 0),

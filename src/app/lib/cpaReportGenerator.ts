@@ -79,6 +79,7 @@ const IRC_SECTIONS: Record<string, string> = {
   'reps':                '§469(c)(7)',
   'home-office-deduction': '§280A(c)',
   'startup-costs':         '§195',
+  'section-179-vehicle':   '§179',
 };
 
 // ─── Documentation requirements per strategy ──────────────────────────────────
@@ -135,6 +136,12 @@ const DOCUMENTATION_REQUIREMENTS: Record<string, string> = {
     'Itemized list of pre-opening expenses with dated receipts. Documentation of the date the ' +
     'business began active operations. Note: any amount beyond the $5,000 immediate deduction ' +
     'is amortized over 180 months (15 years) — track separately for future-year returns.',
+
+  'section-179-vehicle':
+    'Contemporaneous mileage log substantiating business-use percentage. Documentation of the ' +
+    'calculation method used to arrive at that percentage. Vehicle purchase agreement/invoice ' +
+    'showing price and in-service date. GVWR documentation (window sticker or manufacturer spec) ' +
+    'confirming the vehicle exceeds 6,000 lbs.',
 
   '__fallback__':
     'Consult your tax professional for specific documentation requirements for this strategy.',

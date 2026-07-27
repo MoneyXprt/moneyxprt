@@ -12,6 +12,7 @@ import { qbi }              from './modules/qbi';
 import { accountablePlan }  from './modules/accountablePlan';
 import { homeOfficeDeduction } from './modules/homeOfficeDeduction';
 import { startupCosts }        from './modules/startupCosts';
+import { section179Vehicle }   from './modules/section179Vehicle';
 
 /**
  * All registered strategy modules.
@@ -31,6 +32,7 @@ export const registry: Strategy[] = [
   accountablePlan,
   homeOfficeDeduction,
   startupCosts,
+  section179Vehicle,
 ];
 
 /**

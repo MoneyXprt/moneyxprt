@@ -25,6 +25,9 @@ export interface FinancialSnapshot {
   homeOfficeSquareFootage: number;
   isNewBusiness: boolean;
   startupCostsIncurred: number;
+  hasHeavyVehicle: boolean;
+  vehiclePurchasePrice: number;
+  vehicleBusinessUsePercent: number;
   // ── Spouse income ────────────────────────────────────────────────────────────
   spouseW2Income: number;
   spouseBusinessRevenue: number;
@@ -98,6 +101,9 @@ export interface StrategyResult {
   reason: string;
   unlockCondition?: string;
   blockedBy?: string;
+  /** A bold, prominent warning distinct from the standard reason/deep-dive disclaimer —
+   *  e.g. IRS-scrutiny risk on a strategy that's easy to abuse. Only set when relevant. */
+  cautionNote?: string;
 }
 
 export interface Strategy {

@@ -12,4 +12,5 @@ export { qbi }                     from './modules/qbi';
 export { accountablePlan }         from './modules/accountablePlan';
 export { homeOfficeDeduction }     from './modules/homeOfficeDeduction';
 export { startupCosts }            from './modules/startupCosts';
+export { section179Vehicle }       from './modules/section179Vehicle';
 export { registry, evaluateAll }   from './registry';

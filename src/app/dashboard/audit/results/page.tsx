@@ -174,6 +174,16 @@ function ActiveCard({ r }: { r: StrategyResult }) {
           </span>
         </div>
         <p className="text-xs text-gray-600 leading-relaxed pl-4 mb-3">{r.reason}</p>
+        {r.cautionNote && (
+          <div className="ml-4 flex items-start gap-2 rounded-lg bg-red-50 border-2 border-red-200 px-3 py-2.5 mb-3">
+            <svg className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-8.25 3.75h.008v.008h-.008v-.008z" />
+            </svg>
+            <p className="text-xs text-red-800 leading-relaxed font-bold">
+              Caution: {r.cautionNote}
+            </p>
+          </div>
+        )}
         {dive && (
           <button
             type="button"

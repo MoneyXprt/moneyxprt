@@ -31,6 +31,7 @@ interface FormState {
   primaryBusinessType: string; primaryHoursPerWeekInBusiness: string;
   hasDedicatedHomeOffice: boolean; homeOfficeSquareFootage: string;
   isNewBusiness: boolean; startupCostsIncurred: string;
+  hasHeavyVehicle: boolean; vehiclePurchasePrice: string; vehicleBusinessUsePercent: string;
   spouseHasSeparateBusiness: boolean; spouseBusinessType: string;
   hasHsaAvailable: boolean; employer401kAllowsAfterTax: boolean | undefined;
   hasCpa: boolean | undefined; cpaProactive: boolean | undefined;
@@ -74,6 +75,7 @@ const EMPTY: FormState = {
   primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
   hasDedicatedHomeOffice: false, homeOfficeSquareFootage: '',
   isNewBusiness: false, startupCostsIncurred: '',
+  hasHeavyVehicle: false, vehiclePurchasePrice: '', vehicleBusinessUsePercent: '',
   spouseHasSeparateBusiness: false, spouseBusinessType: '',
   hasHsaAvailable: false, employer401kAllowsAfterTax: undefined,
   hasCpa: undefined, cpaProactive: undefined,
@@ -135,6 +137,9 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     homeOfficeSquareFootage:        String(s.homeOfficeSquareFootage || ''),
     isNewBusiness:                  s.isNewBusiness,
     startupCostsIncurred:           String(s.startupCostsIncurred || ''),
+    hasHeavyVehicle:                s.hasHeavyVehicle,
+    vehiclePurchasePrice:           String(s.vehiclePurchasePrice || ''),
+    vehicleBusinessUsePercent:      String(s.vehicleBusinessUsePercent || ''),
     spouseHasSeparateBusiness:  s.spouseBusinessType !== '',
     spouseBusinessType:         s.spouseBusinessType || '',
     hasHsaAvailable:     s.hasHsaAvailable,
@@ -594,6 +599,9 @@ export default function AuditPage() {
         homeOfficeSquareFootage:        effectiveHasBusinessEntity ? n(form.homeOfficeSquareFootage) : 0,
         isNewBusiness:                  effectiveHasBusinessEntity ? form.isNewBusiness : false,
         startupCostsIncurred:           effectiveHasBusinessEntity ? n(form.startupCostsIncurred) : 0,
+        hasHeavyVehicle:                effectiveHasBusinessEntity ? form.hasHeavyVehicle : false,
+        vehiclePurchasePrice:           effectiveHasBusinessEntity ? n(form.vehiclePurchasePrice) : 0,
+        vehicleBusinessUsePercent:      effectiveHasBusinessEntity ? n(form.vehicleBusinessUsePercent) : 0,
         spouseW2Income:  form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
                            ? n(form.spouseW2Income) : 0,
         spouseBusinessRevenue:  form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
@@ -1138,6 +1146,24 @@ export default function AuditPage() {
                       hint="Market research, advertising, training, professional fees, travel to secure suppliers or customers."
                       value={form.startupCostsIncurred} onChange={v => set('startupCostsIncurred', v)} />
                   )}
+                </div>
+              )}
+
+              {effectiveHasBusinessEntity && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Divider label="Business Vehicle" />
+                  <Toggle label="Does the business own or is purchasing a vehicle over 6,000 lbs GVWR (large SUV, truck)?"
+                    value={form.hasHeavyVehicle}
+                    onChange={v => set('hasHeavyVehicle', v)} />
+
+                  {form.hasHeavyVehicle && (<>
+                    <DollarInput label="Vehicle purchase price"
+                      value={form.vehiclePurchasePrice} onChange={v => set('vehiclePurchasePrice', v)} />
+                    <SuffixInput label="Estimated business-use percentage"
+                      hint="Must exceed 50% to qualify — track with a mileage log."
+                      suffix="%" value={form.vehicleBusinessUsePercent}
+                      onChange={v => set('vehicleBusinessUsePercent', v)} placeholder="80" />
+                  </>)}
                 </div>
               )}
 
