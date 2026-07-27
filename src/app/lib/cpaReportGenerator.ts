@@ -77,6 +77,7 @@ const IRC_SECTIONS: Record<string, string> = {
   'hire-kids':           '§3121(b)(3)',
   'mega-backdoor-roth':  '§401(a)(31)',
   'reps':                '§469(c)(7)',
+  'home-office-deduction': '§280A(c)',
 };
 
 // ─── Documentation requirements per strategy ──────────────────────────────────
@@ -124,6 +125,10 @@ const DOCUMENTATION_REQUIREMENTS: Record<string, string> = {
   'reps':
     'Contemporaneous time logs (this report). Documentation that real estate hours exceed 50% of ' +
     'total working hours and total 750+.',
+
+  'home-office-deduction':
+    'Photos of the dedicated space. Floor plan or measurement showing square footage. Note ' +
+    'confirming the space is used regularly and exclusively for business — no personal use.',
 
   '__fallback__':
     'Consult your tax professional for specific documentation requirements for this strategy.',

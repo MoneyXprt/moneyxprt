@@ -29,6 +29,8 @@ export interface SnapshotRow {
   primary_business_net_profit: number;
   primary_business_type: string;
   primary_hours_per_week_in_business: number;
+  has_dedicated_home_office: boolean | null;
+  home_office_square_footage: number | null;
   // Spouse
   spouse_w2_income: number;
   spouse_business_revenue: number;
@@ -116,6 +118,8 @@ function toRow(
     primary_business_net_profit:        s.primaryBusinessNetProfit,
     primary_business_type:              s.primaryBusinessType,
     primary_hours_per_week_in_business: s.primaryHoursPerWeekInBusiness,
+    has_dedicated_home_office:          s.hasDedicatedHomeOffice,
+    home_office_square_footage:         s.homeOfficeSquareFootage,
     spouse_w2_income:                   s.spouseW2Income,
     spouse_business_revenue:            s.spouseBusinessRevenue,
     spouse_business_net_profit:         s.spouseBusinessNetProfit,
@@ -193,6 +197,8 @@ export function fromRow(row: SnapshotRow): FinancialSnapshot {
     primaryBusinessNetProfit:         Number(row.primary_business_net_profit ?? 0),
     primaryBusinessType:              String(row.primary_business_type ?? ''),
     primaryHoursPerWeekInBusiness:    Number(row.primary_hours_per_week_in_business ?? 0),
+    hasDedicatedHomeOffice:           Boolean(row.has_dedicated_home_office),
+    homeOfficeSquareFootage:          Number(row.home_office_square_footage ?? 0),
     spouseW2Income:                   Number(row.spouse_w2_income ?? 0),
     spouseBusinessRevenue:            Number(row.spouse_business_revenue ?? 0),
     spouseBusinessNetProfit:          Number(row.spouse_business_net_profit ?? 0),

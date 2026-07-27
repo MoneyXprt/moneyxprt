@@ -20,6 +20,8 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
   primaryBusinessNetProfit:       4_000,
   primaryBusinessType:            'smllc',
   primaryHoursPerWeekInBusiness:  5,
+  hasDedicatedHomeOffice:         false,
+  homeOfficeSquareFootage:        0,
   spouseW2Income:                 0,
   spouseBusinessRevenue:          0,
   spouseBusinessNetProfit:        0,

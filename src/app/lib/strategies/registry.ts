@@ -10,6 +10,7 @@ import { soloK }            from './modules/soloK';
 import { sCorpElection }    from './modules/sCorpElection';
 import { qbi }              from './modules/qbi';
 import { accountablePlan }  from './modules/accountablePlan';
+import { homeOfficeDeduction } from './modules/homeOfficeDeduction';
 
 /**
  * All registered strategy modules.
@@ -27,6 +28,7 @@ export const registry: Strategy[] = [
   sCorpElection,
   qbi,
   accountablePlan,
+  homeOfficeDeduction,
 ];
 
 /**

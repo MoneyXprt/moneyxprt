@@ -29,6 +29,7 @@ interface FormState {
   filingStatus: 'single' | 'mfj' | 'hoh'; state: string; currentTaxPaid: string;
   hasBusinessEntity: boolean; businessRevenue: string; primaryBusinessNetProfit: string;
   primaryBusinessType: string; primaryHoursPerWeekInBusiness: string;
+  hasDedicatedHomeOffice: boolean; homeOfficeSquareFootage: string;
   spouseHasSeparateBusiness: boolean; spouseBusinessType: string;
   hasHsaAvailable: boolean; employer401kAllowsAfterTax: boolean | undefined;
   hasCpa: boolean | undefined; cpaProactive: boolean | undefined;
@@ -70,6 +71,7 @@ const EMPTY: FormState = {
   filingStatus: 'mfj', state: 'CA', currentTaxPaid: '',
   hasBusinessEntity: false, businessRevenue: '', primaryBusinessNetProfit: '',
   primaryBusinessType: '', primaryHoursPerWeekInBusiness: '',
+  hasDedicatedHomeOffice: false, homeOfficeSquareFootage: '',
   spouseHasSeparateBusiness: false, spouseBusinessType: '',
   hasHsaAvailable: false, employer401kAllowsAfterTax: undefined,
   hasCpa: undefined, cpaProactive: undefined,
@@ -127,6 +129,8 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     primaryBusinessNetProfit:       String(s.primaryBusinessNetProfit || ''),
     primaryBusinessType:            s.primaryBusinessType || '',
     primaryHoursPerWeekInBusiness:  String(s.primaryHoursPerWeekInBusiness || ''),
+    hasDedicatedHomeOffice:         s.hasDedicatedHomeOffice,
+    homeOfficeSquareFootage:        String(s.homeOfficeSquareFootage || ''),
     spouseHasSeparateBusiness:  s.spouseBusinessType !== '',
     spouseBusinessType:         s.spouseBusinessType || '',
     hasHsaAvailable:     s.hasHsaAvailable,
@@ -582,6 +586,8 @@ export default function AuditPage() {
         primaryBusinessNetProfit:       form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
         primaryBusinessType:            form.hasBusinessEntity ? form.primaryBusinessType : '',
         primaryHoursPerWeekInBusiness:  form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
+        hasDedicatedHomeOffice:         effectiveHasBusinessEntity ? form.hasDedicatedHomeOffice : false,
+        homeOfficeSquareFootage:        effectiveHasBusinessEntity ? n(form.homeOfficeSquareFootage) : 0,
         spouseW2Income:  form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
                            ? n(form.spouseW2Income) : 0,
         spouseBusinessRevenue:  form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
@@ -852,6 +858,10 @@ export default function AuditPage() {
   const totalMonthly = n(form.essentialMonthlySpend) + n(form.discretionaryMonthlySpend);
   const computedHomeEquity = Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance));
   const bonusCash = Math.max(0, n(form.bonusIncome) - (form.bonusDefers ? n(form.bonusDeferred) : 0));
+  // Live-render equivalent of handleSubmit's effectiveHasBusinessEntity — gates any UI
+  // section whose eligibility depends on a business entity existing anywhere on the
+  // joint return (not just the user's own), same as the Augusta Rule save-time fix.
+  const effectiveHasBusinessEntity = form.hasBusinessEntity || (form.spouseWorks && form.spouseHasSeparateBusiness);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1089,6 +1099,23 @@ export default function AuditPage() {
                         <option value="partnership">Partnership</option>
                       </select>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {effectiveHasBusinessEntity && (
+                <div className="pl-4 border-l-2 border-emerald-100 space-y-4">
+                  <Divider label="Home Office" />
+                  <Toggle label="Do you have a dedicated space used regularly and exclusively for the business?"
+                    hint="A desk in a shared family room doesn't qualify — the IRS requires exclusive business use."
+                    value={form.hasDedicatedHomeOffice}
+                    onChange={v => set('hasDedicatedHomeOffice', v)} />
+
+                  {form.hasDedicatedHomeOffice && (
+                    <SuffixInput label="Approximate square footage of that space"
+                      hint="Used to size the home office deduction (simplified method: $5/sq ft, up to 300 sq ft)."
+                      suffix="sq ft" value={form.homeOfficeSquareFootage}
+                      onChange={v => set('homeOfficeSquareFootage', v)} placeholder="150" />
                   )}
                 </div>
               )}
