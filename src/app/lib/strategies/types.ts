@@ -51,6 +51,8 @@ export interface FinancialSnapshot {
   monthlySpend: number;           // essentialMonthlySpend + discretionaryMonthlySpend
   emergencyFund: number;
   extraDebtPayments: number;      // typical monthly amount paid above minimums, across all debts
+  childSupportMonthly: number;
+  alimonyMonthly: number;
   // ── Liabilities ──────────────────────────────────────────────────────────────
   carLoanBalance: number;
   carLoanRate: number;

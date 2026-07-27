@@ -201,6 +201,8 @@ export default function SnapshotSummaryPage() {
   const monthlyMinDebtPayments = s.carLoanPayment + s.studentLoanPayment + s.personalLoanPayment +
                                  s.creditCardPayment + s.businessLoanPayment + s.otherDebtPayment;
   const monthlyExtraDebt       = s.extraDebtPayments;
+  const monthlyChildSupport    = s.childSupportMonthly;
+  const monthlyAlimony         = s.alimonyMonthly;
   const deployableMonthly      = computeMonthlyDeployable(s);
   const bonusNetEstimate       = computeAnnualBonusNetEstimate(bonusPlan, bonusPayments);
   const bonusNetEstimateSource = computeAnnualBonusNetEstimateSource(bonusPlan, bonusPayments);
@@ -347,6 +349,12 @@ export default function SnapshotSummaryPage() {
                     : []),
                   ...(monthlyExtraDebt > 0
                     ? [{ label: 'Extra payments toward debt', value: `− ${fmtFull(monthlyExtraDebt)}` }]
+                    : []),
+                  ...(monthlyChildSupport > 0
+                    ? [{ label: 'Child support paid', value: `− ${fmtFull(monthlyChildSupport)}` }]
+                    : []),
+                  ...(monthlyAlimony > 0
+                    ? [{ label: 'Alimony/spousal support paid', value: `− ${fmtFull(monthlyAlimony)}` }]
                     : []),
                 ].map(({ label, value }) => (
                   <div key={label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">

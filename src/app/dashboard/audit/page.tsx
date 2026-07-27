@@ -55,6 +55,7 @@ interface FormState {
   // S5 — Cash Flow
   essentialMonthlySpend: string; discretionaryMonthlySpend: string; emergencyFund: string;
   extraDebtPayments: string;
+  childSupportMonthly: string; alimonyMonthly: string;
   // S6 — Household
   dependentsUnder18: string; dependentAges: string; spouseHoursPerWeekInBusiness: string;
 }
@@ -88,6 +89,7 @@ const EMPTY: FormState = {
   businessLoanOriginalBalance: '', otherDebtOriginalBalance: '',
   essentialMonthlySpend: '', discretionaryMonthlySpend: '', emergencyFund: '',
   extraDebtPayments: '',
+  childSupportMonthly: '', alimonyMonthly: '',
   dependentsUnder18: '', dependentAges: '', spouseHoursPerWeekInBusiness: '',
 };
 
@@ -174,6 +176,8 @@ function snapshotToForm(s: FinancialSnapshot): FormState {
     emergencyFund:              rnd(s.emergencyFund, 1000),
     // No backing FinancialSnapshot field yet (next step).
     extraDebtPayments: '',
+    childSupportMonthly: String(s.childSupportMonthly || ''),
+    alimonyMonthly:      String(s.alimonyMonthly || ''),
     dependentsUnder18: String(s.dependentsUnder18 || ''),
     dependentAges:     s.dependentAges || '',
     spouseHoursPerWeekInBusiness: String(s.spouseHoursPerWeekInBusiness || ''),
@@ -555,6 +559,10 @@ export default function AuditPage() {
       const discretionary = n(form.discretionaryMonthlySpend);
       const grossBonus    = n(form.bonusIncome);
       const bonusDeferred = form.bonusDefers ? Math.min(n(form.bonusDeferred), grossBonus) : 0;
+      // A spouse's separate business entity also satisfies IRC §280A(g) Augusta Rule
+      // eligibility (and every other hasBusinessEntity-gated strategy) — it's a real
+      // entity on the joint return, not specifically the user's own sole-proprietorship.
+      const effectiveHasBusinessEntity = form.hasBusinessEntity || (form.spouseWorks && form.spouseHasSeparateBusiness);
 
       const snapshot: FinancialSnapshot = {
         w2Income:           n(form.w2Income),
@@ -569,7 +577,7 @@ export default function AuditPage() {
         state:              form.state,
         dependentsUnder18:  n(form.dependentsUnder18),
         dependentAges:      form.dependentAges.trim(),
-        hasBusinessEntity:              form.hasBusinessEntity,
+        hasBusinessEntity:              effectiveHasBusinessEntity,
         businessRevenue:                form.hasBusinessEntity ? n(form.businessRevenue) : 0,
         primaryBusinessNetProfit:       form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
         primaryBusinessType:            form.hasBusinessEntity ? form.primaryBusinessType : '',
@@ -603,6 +611,8 @@ export default function AuditPage() {
         monthlySpend:              essential + discretionary,
         emergencyFund:         n(form.emergencyFund),
         extraDebtPayments:     n(form.extraDebtPayments),
+        childSupportMonthly:   n(form.childSupportMonthly),
+        alimonyMonthly:        n(form.alimonyMonthly),
         carLoanBalance:   form.hasCarLoan ? n(form.carLoanBalance) : 0,
         carLoanRate:      form.hasCarLoan ? n(form.carLoanRate) : 0,
         carLoanPayment:   form.hasCarLoan ? n(form.carLoanPayment) : 0,
@@ -1349,6 +1359,14 @@ export default function AuditPage() {
               <DollarInput label="Extra payments toward debt beyond minimums (typical monthly amount)"
                 hint="Anything you regularly pay above the minimums listed in Liabilities — separate from discretionary spending."
                 value={form.extraDebtPayments} onChange={v => set('extraDebtPayments', v)} />
+
+              <DollarInput label="Monthly child support paid"
+                hint="A court-ordered or agreed monthly payment. Not tax-deductible."
+                value={form.childSupportMonthly} onChange={v => set('childSupportMonthly', v)} />
+
+              <DollarInput label="Monthly alimony/spousal support paid"
+                hint="For agreements executed after Dec 31, 2018, this is not tax-deductible and not taxable to the recipient. If your agreement predates 2019 and hasn't been modified, the old rules may still apply — consult your CPA."
+                value={form.alimonyMonthly} onChange={v => set('alimonyMonthly', v)} />
             </>)}
 
             {/* ── Section 6: Household ──────────────────────────────── */}

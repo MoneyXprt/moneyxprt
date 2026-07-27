@@ -214,8 +214,9 @@ export function computeGrossAnnualIncome(s: FinancialSnapshot): number {
 /**
  * Monthly capital deployable toward assets: recurring take-home pay minus
  * essential/discretionary spend minus minimum debt payments across every debt type
- * minus any typical extra (above-minimum) debt payments the user reported. No bonus —
- * see computeAnnualDeployableTotal for the figure that includes it.
+ * minus any typical extra (above-minimum) debt payments the user reported minus
+ * child support and alimony paid. No bonus — see computeAnnualDeployableTotal for
+ * the figure that includes it.
  */
 export function computeMonthlyDeployable(s: FinancialSnapshot): number {
   const monthlyTakeHome = computeMonthlyTakeHome(s);
@@ -226,7 +227,7 @@ export function computeMonthlyDeployable(s: FinancialSnapshot): number {
     s.creditCardPayment +
     s.businessLoanPayment +
     s.otherDebtPayment;
-  return Math.max(0, monthlyTakeHome - s.essentialMonthlySpend - s.discretionaryMonthlySpend - monthlyMinDebtPayments - s.extraDebtPayments);
+  return Math.max(0, monthlyTakeHome - s.essentialMonthlySpend - s.discretionaryMonthlySpend - monthlyMinDebtPayments - s.extraDebtPayments - s.childSupportMonthly - s.alimonyMonthly);
 }
 
 /**

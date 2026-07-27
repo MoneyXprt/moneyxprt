@@ -59,6 +59,8 @@ export interface SnapshotRow {
   monthly_spend: number;
   emergency_fund: number;
   extra_debt_payments: number;
+  child_support_monthly: number | null;
+  alimony_monthly: number | null;
   // Liabilities
   car_loan_balance: number;
   car_loan_rate: number;
@@ -140,6 +142,8 @@ function toRow(
     monthly_spend:                 s.monthlySpend,
     emergency_fund:                s.emergencyFund,
     extra_debt_payments:           s.extraDebtPayments,
+    child_support_monthly:         s.childSupportMonthly,
+    alimony_monthly:               s.alimonyMonthly,
     car_loan_balance:              s.carLoanBalance,
     car_loan_rate:                 s.carLoanRate,
     car_loan_payment:              s.carLoanPayment,
@@ -217,6 +221,8 @@ export function fromRow(row: SnapshotRow): FinancialSnapshot {
     monthlySpend:                Number(row.monthly_spend ?? 0),
     emergencyFund:               Number(row.emergency_fund ?? 0),
     extraDebtPayments:           Number(row.extra_debt_payments ?? 0),
+    childSupportMonthly:         Number(row.child_support_monthly ?? 0),
+    alimonyMonthly:              Number(row.alimony_monthly ?? 0),
     carLoanBalance:              Number(row.car_loan_balance ?? 0),
     carLoanRate:                 Number(row.car_loan_rate ?? 0),
     carLoanPayment:              Number(row.car_loan_payment ?? 0),

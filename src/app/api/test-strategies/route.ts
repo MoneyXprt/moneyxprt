@@ -46,6 +46,8 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
   monthlySpend:           8_300,
   emergencyFund:          13_000,
   extraDebtPayments:      0,
+  childSupportMonthly:    0,
+  alimonyMonthly:         0,
   carLoanBalance:         0,
   carLoanRate:            0,
   carLoanPayment:         0,
