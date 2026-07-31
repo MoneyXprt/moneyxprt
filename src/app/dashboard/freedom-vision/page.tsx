@@ -10,7 +10,7 @@
   alter table freedom_profiles add column if not exists freedom_statement text;
 */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
@@ -464,6 +464,19 @@ function S7({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function FreedomVisionPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOREST }}>
+        <div className="w-8 h-8 rounded-full animate-spin"
+          style={{ border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff' }} />
+      </div>
+    }>
+      <FreedomVisionInner />
+    </Suspense>
+  );
+}
+
+function FreedomVisionInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isFresh = searchParams?.get('fresh') === 'true';

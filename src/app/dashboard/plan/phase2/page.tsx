@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
@@ -354,6 +354,18 @@ function AuthGate({ onSession }: { onSession: (s: Session) => void }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Phase2Page() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <Phase2Inner />
+    </Suspense>
+  );
+}
+
+function Phase2Inner() {
   const router      = useRouter();
   const params      = useSearchParams();
   const isFresh     = params.get('fresh') === 'true';

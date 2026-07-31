@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
@@ -89,6 +89,14 @@ function Spinner() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SnapshotSummaryPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <SnapshotSummaryInner />
+    </Suspense>
+  );
+}
+
+function SnapshotSummaryInner() {
   const router      = useRouter();
   const searchParams = useSearchParams();
   const freshParam  = searchParams.get('fresh') === 'true';

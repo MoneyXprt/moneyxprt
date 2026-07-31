@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
@@ -303,6 +303,19 @@ function ResultsScreen({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function FreedomCalculatorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: FOREST }}>
+        <div className="w-8 h-8 rounded-full animate-spin"
+          style={{ border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff' }} />
+      </div>
+    }>
+      <FreedomCalculatorInner />
+    </Suspense>
+  );
+}
+
+function FreedomCalculatorInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isFresh = searchParams.get('fresh') === 'true';

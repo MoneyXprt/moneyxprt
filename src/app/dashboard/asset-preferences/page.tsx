@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
@@ -275,6 +275,18 @@ function AssetCardComponent({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AssetPreferencesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <AssetPreferencesInner />
+    </Suspense>
+  );
+}
+
+function AssetPreferencesInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isFresh = searchParams.get('fresh') === 'true';
