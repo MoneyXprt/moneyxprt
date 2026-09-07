@@ -14,10 +14,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'MoneyXprt',
+    default: 'MoneyXprt — Financial clarity for high-earning W2 professionals',
     template: '%s | MoneyXprt',
   },
-  description: 'Build and execute a practical financial freedom plan.',
+  description: 'A financial command center for W2 employees who want to keep more, invest smarter, and stop guessing — without paying 1% to a financial advisor.',
+  icons: {
+    icon: '/icon',
+  },
 };
 
 export default function RootLayout({
