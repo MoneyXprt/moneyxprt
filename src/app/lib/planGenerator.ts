@@ -12,6 +12,7 @@ import { simulateDebtSnowballPayoff, computeDebtPayoffOrder, type SimulatableDeb
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from '@/app/lib/financialPhase';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { saveGeneratedPlan, type GeneratedPlanPromotionCaller } from './generatedPlansRepository';
 
 // ─── Input / output types ─────────────────────────────────────────────────────
 
@@ -912,34 +913,17 @@ export function generatePreviewPlan(inputs: PlanInputs, incomeAssumptions: Incom
 
 // ─── Persistence layer ────────────────────────────────────────────────────────
 
-export async function savePlan(plan: GeneratedPlan, userId: string, client?: SupabaseClient): Promise<string> {
+export async function savePlan(
+  plan: GeneratedPlan,
+  userId: string,
+  client?: SupabaseClient,
+  caller: GeneratedPlanPromotionCaller = 'user-session',
+): Promise<string> {
   let sb = client;
   if (!sb) {
     const { getBrowserSupabaseClient } = await import('@/app/utils/supabaseClient');
     sb = getBrowserSupabaseClient();
   }
 
-  const projectedFreedomDate =
-    plan.freedomGap.projectedFreedomYear > 0
-      ? `${plan.freedomGap.projectedFreedomYear}-01-01`
-      : null;
-
-  // Retire all previous plans for this user
-  await sb.from('generated_plans').update({ is_current: false }).eq('user_id', userId);
-
-  // Insert new current plan
-  const { data, error } = await sb.from('generated_plans').insert({
-    user_id:                     userId,
-    is_current:                  true,
-    freedom_gap:                 plan.freedomGap,
-    phases:                      plan.phases,
-    tax_strategy_stack:          plan.taxStrategyStack,
-    asset_roadmap:               plan.assetRoadmap,
-    deployable_capital_per_year: plan.deployableCapitalPerYear,
-    ai_narrative:                null,
-    projected_freedom_date:      projectedFreedomDate,
-  }).select('id').single();
-
-  if (error) throw new Error(`savePlan failed: ${error.message}`);
-  return data.id;
+  return saveGeneratedPlan(sb, userId, plan, caller);
 }

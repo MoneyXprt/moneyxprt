@@ -102,7 +102,7 @@ export async function addSpouseBusinessStrategiesToPlan(
     .eq('user_id', userId);
   if (snapshotError) throw new Error(`Could not update business revenue: ${snapshotError.message}`);
 
-  await regeneratePlanAndActions(client, userId);
+  await regeneratePlanAndActions(client, userId, 'service-role');
 }
 
 /** Runtime validation for the public API boundary. */

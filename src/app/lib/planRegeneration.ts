@@ -4,11 +4,9 @@
  * Shared "recompute the plan and its actions from saved data, then persist both"
  * pipeline — the same generateBaselinePlan + savePlan + generateActions + saveActions
  * sequence plan/results/page.tsx runs for its own account on every visit, extracted so
- * it can also be triggered on a different account's behalf (see
- * /api/regenerate-partner-plan/route.ts, used by a partner's explicit "refresh" action).
- * Takes an explicit Supabase client so it works with either a browser session (self) or
- * a service-role client (server route acting on someone else's account after its own
- * authorization check).
+ * it can also be triggered by trusted server routes (including a partner's explicit
+ * refresh action). It takes a service-role client only after its calling route has
+ * authenticated the actor and authorized the target account.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -19,7 +17,11 @@ import type { FinancialPhase } from './financialPhase';
 import type { SimulatableDebt } from './debtPayoff';
 import type { BonusPlan } from './deployableCapital';
 
-export async function regeneratePlanAndActions(sb: SupabaseClient, userId: string): Promise<void> {
+export async function regeneratePlanAndActions(
+  sb: SupabaseClient,
+  userId: string,
+  caller: 'service-role',
+): Promise<void> {
   const currentYear = new Date().getFullYear();
   const yearStart = `${currentYear}-01-01`;
   const yearEnd   = `${currentYear + 1}-01-01`;
@@ -103,7 +105,7 @@ export async function regeneratePlanAndActions(sb: SupabaseClient, userId: strin
   };
 
   const generated = generateBaselinePlan(inputs);
-  await savePlan(generated, userId, sb);
+  await savePlan(generated, userId, sb, caller);
   const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase);
   await saveActions(execActions, userId, sb);
 }

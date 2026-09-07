@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not an accepted partner on this account.' }, { status: 403 });
     }
 
-    await regeneratePlanAndActions(sb, primaryUserId);
+    await regeneratePlanAndActions(sb, primaryUserId, 'service-role');
 
     return NextResponse.json({ ok: true });
   } catch (err) {
