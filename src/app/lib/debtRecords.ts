@@ -18,6 +18,7 @@ export interface DebtRecord {
 }
 
 export interface DebtCorrectionChanges {
+  originalBalance: number;
   currentBalance: number;
   isActive: boolean;
 }
@@ -79,6 +80,12 @@ export function validateDebtCorrection(changes: DebtCorrectionChanges, reason: s
   if (!Number.isFinite(changes.currentBalance) || changes.currentBalance < 0 || changes.currentBalance > DEBT_CORRECTION_MAX_BALANCE) {
     return 'Enter a valid current balance.';
   }
+  if (!Number.isFinite(changes.originalBalance) || changes.originalBalance <= 0 || changes.originalBalance > DEBT_CORRECTION_MAX_BALANCE) {
+    return 'Enter a valid original balance.';
+  }
+  if (changes.originalBalance < changes.currentBalance) {
+    return 'Original balance must be at least the current balance.';
+  }
   if (changes.isActive && changes.currentBalance === 0) {
     return 'An active debt must have a balance greater than $0.';
   }
@@ -99,6 +106,7 @@ export async function correctDebtRecord(
 
   const { data, error } = await getBrowserSupabaseClient().rpc('correct_debt_record', {
     target_debt_id: debtId,
+    target_original_balance: changes.originalBalance,
     target_current_balance: changes.currentBalance,
     target_is_active: changes.isActive,
     correction_reason: reason.trim(),
