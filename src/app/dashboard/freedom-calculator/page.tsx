@@ -358,7 +358,7 @@ function FreedomCalculatorInner() {
       (_e, s) => setSession(s),
     );
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isFresh]);
 
   // Focus input when step changes
   useEffect(() => {

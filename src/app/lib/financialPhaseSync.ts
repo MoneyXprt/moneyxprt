@@ -20,7 +20,7 @@ export async function syncFinancialPhase(sb: SupabaseClient, userId: string): Pr
     sb.from('financial_snapshots')
       .select('emergency_fund, monthly_spend')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+      .order('snapshot_date', { ascending: false })
       .limit(1)
       .maybeSingle(),
     sb.from('debts')

@@ -286,7 +286,7 @@ export async function getSnapshotForServer(
     .from('financial_snapshots')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    .order('snapshot_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`getSnapshotForServer: ${error.message}`);
@@ -315,7 +315,7 @@ export async function getLatestSnapshotWithId(): Promise<{ snapshot: FinancialSn
     .from('financial_snapshots')
     .select('*')
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+    .order('snapshot_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`getLatestSnapshotWithId failed: ${error.message}`);
@@ -331,7 +331,7 @@ export async function getLatestSnapshot(): Promise<FinancialSnapshot | null> {
     .from('financial_snapshots')
     .select('*')
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+    .order('snapshot_date', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`getLatestSnapshot failed: ${error.message}`);

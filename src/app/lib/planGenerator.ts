@@ -280,16 +280,6 @@ function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAss
   let rentalTaxUnlockAnnualValue = 0;
   const wantsRental = assetPreferences.some(p => p === 'long_term_rental' || p === 'short_term_rental');
   const simulationWillRun = !snapshot.currentlyOwnsRental && wantsRental && snapshot.consideringRealEstate;
-  console.log(
-    '[planGenerator] rental tax-unlock simulation:',
-    JSON.stringify({
-      assetPreferences,
-      consideringRealEstate: snapshot.consideringRealEstate,
-      currentlyOwnsRental: snapshot.currentlyOwnsRental,
-      wantsRental,
-      simulationWillRun,
-    }),
-  );
   if (simulationWillRun) {
     const rentalPropertyValue = snapshot.plannedPropertyValue ?? 350_000;
     // REPS is viable when the non-working spouse can dedicate 750+ hours to RE activities.
@@ -574,18 +564,6 @@ function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAss
       }
       let yearAcquired = false;
       let capitalAssetAcquiredThisYear = false;  // set in step 3; gates the index sweep in step 4
-
-      // Debug: trace capital state at the start of each year
-      const _nextAssetDbg = capitalAssets.length > 0
-        ? capitalAssets[capitalCycleIndex % capitalAssets.length]
-        : null;
-      console.log(
-        `[roadmap] year=${year}` +
-        ` cycleIdx=${capitalCycleIndex}` +
-        ` capitalAccumulated=${Math.round(capitalAccumulated)}` +
-        ` effectiveDeployable=${Math.round(effectiveDeployableCapital)}` +
-        ` evaluating=${_nextAssetDbg ? _nextAssetDbg.id + '(dp=$' + _nextAssetDbg.downPayment + ')' : 'index-only'}`,
-      );
 
       // Emit the tax unlock roadmap row (after capital accumulation so ordering is clean)
       if (taxUnlockThisYear) {

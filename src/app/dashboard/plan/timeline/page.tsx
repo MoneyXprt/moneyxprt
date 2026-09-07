@@ -152,10 +152,6 @@ function buildIncomeAssumptions(
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
-const fmtM = (n: number) =>
-  n >= 10000 ? `$${(n / 1000).toFixed(0)}k` :
-  n >= 1000  ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n).toLocaleString()}`;
-
 const fmtFull = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${Math.round(n).toLocaleString()}`;
 

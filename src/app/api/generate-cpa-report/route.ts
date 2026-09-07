@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import PDFDocument from 'pdfkit';
 import { buildCpaReportData, CATEGORY_TITLES } from '@/app/lib/cpaReportGenerator';
 import type { CpaReportData } from '@/app/lib/cpaReportGenerator';
+import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -422,6 +423,16 @@ export async function POST(req: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const limit = await checkServerRateLimit(
+      `cpa-report:${user.id}`,
+      { maxRequests: 10, windowMs: 60 * 60 * 1_000 },
+    );
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many report requests. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      );
+    }
 
     // ── Data + PDF ────────────────────────────────────────────────────────────
     const reportData = await buildCpaReportData(user.id, user.email ?? '');
@@ -438,7 +449,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('[generate-cpa-report]', err);
-    const msg = err instanceof Error ? err.message : 'Failed to generate report';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Could not generate your CPA report. Please try again.' }, { status: 500 });
   }
 }

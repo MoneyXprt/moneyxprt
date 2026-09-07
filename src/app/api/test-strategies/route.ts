@@ -82,6 +82,9 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
 };
 
 export function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const results = evaluateAll(TEST_SNAPSHOT);
   return NextResponse.json(
     { snapshot: TEST_SNAPSHOT, results },

@@ -1,18 +1,19 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextVitals from 'eslint-config-next/core-web-vitals';
+import nextTypeScript from 'eslint-config-next/typescript';
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    ignores: ['.next/**', 'next-env.d.ts', 'coverage/**'],
+  },
+  ...nextVitals,
+  ...nextTypeScript,
   {
     rules: {
+      // Next 16 enables React Compiler diagnostics by default. The app has existing
+      // async loading and hydration effects that need a dedicated refactor before
+      // compiler adoption; keep the established lint rules active in the meantime.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
       // Cosmetic-only rule (literal apostrophes/quotes in JSX text) — not a
       // code-correctness issue. Downgraded so it doesn't block production
       // builds; still surfaces as a warning locally.

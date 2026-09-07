@@ -389,7 +389,6 @@ export default function AssumptionsPage() {
   ]);
 
   useEffect(() => {
-    if (!snapshot || !profile || !constraints) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(runLiveCalc, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };

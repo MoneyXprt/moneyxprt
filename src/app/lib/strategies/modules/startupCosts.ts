@@ -14,6 +14,8 @@
  */
 
 import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
+import { getTaxableIncome } from '../taxConstants2026';
+import { estimateDeductionTaxImpact } from '../taxImpact';
 
 const ID   = 'startup-costs';
 const NAME = 'Startup Costs Deduction';
@@ -88,25 +90,31 @@ export const startupCosts: Strategy = {
     // ── ACTIVE ────────────────────────────────────────────────────────────────
     const phaseoutReduction   = Math.max(0, s.startupCostsIncurred - PHASEOUT_THRESHOLD);
     const immediateDeduction = Math.min(IMMEDIATE_DEDUCTION_CAP, Math.max(0, IMMEDIATE_DEDUCTION_CAP - phaseoutReduction));
-    const estimatedAnnualValue = immediateDeduction;
+    const taxImpact = estimateDeductionTaxImpact(immediateDeduction, s, getTaxableIncome(s));
     const remainder            = s.startupCostsIncurred - immediateDeduction;
 
     return {
       ...base,
       state: 'ACTIVE',
-      estimatedAnnualValue,
+      estimatedAnnualValue: taxImpact.estimatedCashSavings,
+      taxImpact,
       reason:
         `Your $${s.startupCostsIncurred.toLocaleString()} in startup costs qualifies for ` +
-        `an immediate deduction of $${estimatedAnnualValue.toLocaleString()} in the year your ` +
+        `an immediate deduction of $${taxImpact.annualDeduction.toLocaleString()} in the year your ` +
         `business began operating` +
         (immediateDeduction < IMMEDIATE_DEDUCTION_CAP
           ? ` (reduced from the $${IMMEDIATE_DEDUCTION_CAP.toLocaleString()} cap because total ` +
             `startup costs exceed the $${PHASEOUT_THRESHOLD.toLocaleString()} phaseout threshold).`
           : '.') +
+        ` At your estimated marginal rate, that is about $${taxImpact.estimatedCashSavings.toLocaleString()} in current-year income-tax savings.` +
         (remainder > 0
           ? ` The remaining $${Math.round(remainder).toLocaleString()} is amortized ratably ` +
             'over 180 months (15 years), starting the month the business began operating.'
           : ''),
+      evidenceRequirements: [
+        'Invoices and receipts for pre-opening costs',
+        'Business start date and description of each cost',
+      ],
     };
   },
 };

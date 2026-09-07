@@ -173,6 +173,11 @@ function ActiveCard({ r }: { r: StrategyResult }) {
             {fmt(r.estimatedAnnualValue)}<span className="text-xs font-normal text-emerald-600">/yr</span>
           </span>
         </div>
+        {r.taxImpact && (
+          <p className="ml-4 mb-2 text-[10px] font-medium text-emerald-700">
+            {fmt(r.taxImpact.annualDeduction)} deduction → estimated income-tax savings
+          </p>
+        )}
         <p className="text-xs text-gray-600 leading-relaxed pl-4 mb-3">{r.reason}</p>
         {r.cautionNote && (
           <div className="ml-4 flex items-start gap-2 rounded-lg bg-red-50 border-2 border-red-200 px-3 py-2.5 mb-3">
@@ -182,6 +187,14 @@ function ActiveCard({ r }: { r: StrategyResult }) {
             <p className="text-xs text-red-800 leading-relaxed font-bold">
               Caution: {r.cautionNote}
             </p>
+          </div>
+        )}
+        {r.evidenceRequirements && r.evidenceRequirements.length > 0 && (
+          <div className="ml-4 mb-3 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700">Keep these records</p>
+            <ul className="mt-1 space-y-1 text-xs leading-relaxed text-sky-900">
+              {r.evidenceRequirements.map((item) => <li key={item}>• {item}</li>)}
+            </ul>
           </div>
         )}
         {dive && (
@@ -387,7 +400,6 @@ function ThreatHero({ cashValue, projectedValue, snapshotDate }: { cashValue: nu
 // ─── First-time audit banner (Defend Part 5) ──────────────────────────────────
 
 function FirstAuditBanner({ cashValue, projectedValue, onDismiss }: { cashValue: number; projectedValue: number; onDismiss: () => void }) {
-  const tenYear = Math.round(cashValue * 14.78);
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
       <div className="flex items-start justify-between gap-3">
@@ -402,13 +414,12 @@ function FirstAuditBanner({ cashValue, projectedValue, onDismiss }: { cashValue:
         </button>
       </div>
       <p className="text-xs text-amber-800 mt-1.5 leading-relaxed">
-        At your income level, the default path costs you{' '}
-        <strong>{fmt(cashValue)}</strong> in avoidable taxes every year (cash tax savings this year). That&apos;s{' '}
-        <strong>{fmt(tenYear)}</strong> over 10 years that could have been building assets instead.
+        Based on the information in your snapshot, these strategies may reduce current-year taxes by up to{' '}
+        <strong>{fmt(cashValue)}</strong>. Eligibility, documentation, and your CPA&apos;s review determine the actual result.
         {projectedValue > 0 && (
           <> On top of that, <strong>{fmt(projectedValue)}</strong>/year in long-term value from tax-advantaged growth is available.</>
         )}
-        {' '}This audit shows you how to stop it.
+        {' '}Use this audit to decide what to verify and implement next.
       </p>
     </div>
   );
@@ -471,15 +482,15 @@ export default function AuditResultsPage() {
         setLoading(false);
         return;
       }
-      // Capture created_at for display via the raw Supabase query
+      // Capture the most recent snapshot version for display via the raw query.
       const sb = getBrowserSupabaseClient();
       const { data: row } = await sb
         .from('financial_snapshots')
-        .select('created_at')
-        .order('created_at', { ascending: false })
+        .select('snapshot_date')
+        .order('snapshot_date', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (row?.created_at) setSnapshotDate(row.created_at as string);
+      if (row?.snapshot_date) setSnapshotDate(row.snapshot_date as string);
 
       setResults(evaluateAll(snapshot));
 

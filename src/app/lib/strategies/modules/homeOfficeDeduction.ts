@@ -15,6 +15,8 @@
  */
 
 import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
+import { getTaxableIncome } from '../taxConstants2026';
+import { estimateDeductionTaxImpact } from '../taxImpact';
 
 const ID   = 'home-office-deduction';
 const NAME = 'Home Office Deduction (Simplified Method)';
@@ -87,17 +89,23 @@ export const homeOfficeDeduction: Strategy = {
 
     // ── ACTIVE ────────────────────────────────────────────────────────────────
     const deductibleSqft       = Math.min(s.homeOfficeSquareFootage, SIMPLIFIED_SQFT_CAP);
-    const estimatedAnnualValue = Math.round(deductibleSqft * SIMPLIFIED_RATE_PER_SQFT);
+    const taxImpact = estimateDeductionTaxImpact(
+      deductibleSqft * SIMPLIFIED_RATE_PER_SQFT,
+      s,
+      getTaxableIncome(s),
+    );
 
     return {
       ...base,
       state: 'ACTIVE',
-      estimatedAnnualValue,
+      estimatedAnnualValue: taxImpact.estimatedCashSavings,
+      taxImpact,
       reason:
         `Your ${s.homeOfficeSquareFootage.toLocaleString()} sq ft dedicated office ` +
         `qualifies for the simplified-method deduction: $${SIMPLIFIED_RATE_PER_SQFT}/sq ft ` +
         `on up to ${SIMPLIFIED_SQFT_CAP} sq ft, for a deduction of ` +
-        `$${estimatedAnnualValue.toLocaleString()}/yr` +
+        `$${taxImpact.annualDeduction.toLocaleString()}/yr, worth about ` +
+        `$${taxImpact.estimatedCashSavings.toLocaleString()} in current-year income-tax savings` +
         (s.homeOfficeSquareFootage > SIMPLIFIED_SQFT_CAP
           ? ` (capped at the ${SIMPLIFIED_SQFT_CAP} sq ft simplified-method maximum — ` +
             'the actual-expense method may yield more for a larger space, but requires ' +
@@ -105,6 +113,10 @@ export const homeOfficeDeduction: Strategy = {
           : '.') +
         ' No receipts required, but the space must be used regularly and exclusively ' +
         'for business — any personal use disqualifies the deduction entirely.',
+      evidenceRequirements: [
+        'Office square-footage measurement',
+        'Record showing regular and exclusive business use',
+      ],
     };
   },
 };

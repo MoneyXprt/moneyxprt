@@ -1,4 +1,4 @@
-export type { FinancialSnapshot, Strategy, StrategyResult, StrategyState } from './types';
+export type { FinancialSnapshot, Strategy, StrategyResult, StrategyState, TaxImpactEstimate } from './types';
 export { augustaRule }             from './modules/augustaRule';
 export { hireKids }                from './modules/hireKids';
 export { backdoorRoth }            from './modules/backdoorRoth';

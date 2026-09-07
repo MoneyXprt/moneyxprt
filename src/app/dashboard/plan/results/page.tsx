@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Tooltip } from '@/components/Tooltip';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
@@ -478,7 +478,7 @@ export default function PlanResultsPage() {
 
       const [
         { data: profileRow },
-        { data: assetRows, error: assetError },
+        { data: assetRows },
         { data: constraintsRow },
         { data: prevPlanRow },
         { data: bonusPlanRow },
@@ -535,8 +535,6 @@ export default function PlanResultsPage() {
         interestRate:  Number(d.interest_rate),
         isActive:      d.is_active,
       }));
-
-      console.log('[plan/results] assetRows:', assetRows, 'error:', assetError?.message);
 
       // Fetch snapshot separately (returns FinancialSnapshot | null, not { data })
       const snapshotResult = await getLatestSnapshot();
@@ -664,7 +662,7 @@ export default function PlanResultsPage() {
         setNarrativeLoading(true);
         fetch('/api/generate-narrative', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.access_token}` },
           body: JSON.stringify({
             freedomVision:            profileRow!.vision_text ?? '',
             freedomNumber:            generated.freedomGap.freedomNumberMonthly,
@@ -822,7 +820,7 @@ export default function PlanResultsPage() {
                 <span className="text-2xl">🏠</span>
                 <div>
                   <p className="text-sm font-semibold text-purple-900">Your shared path to freedom</p>
-                  <p className="text-xs text-purple-600 mt-0.5">You're viewing your household's freedom plan. Head to Execute to check off your actions.</p>
+                  <p className="text-xs text-purple-600 mt-0.5">You&apos;re viewing your household&apos;s freedom plan. Head to Execute to check off your actions.</p>
                 </div>
               </div>
               <button

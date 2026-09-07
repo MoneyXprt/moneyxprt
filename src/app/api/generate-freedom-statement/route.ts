@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
+import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,20 @@ interface StatementBody {
   target_free_age:       number;
 }
 
+function isStatementBody(value: unknown): value is StatementBody {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Record<string, unknown>;
+  const textFields = [
+    'childhood_dream', 'vision_text', 'identity_shift', 'relationship_impact',
+    'time_use_preference', 'cost_of_waiting',
+  ];
+  return textFields.every((field) => typeof body[field] === 'string' && body[field].length <= 2_000)
+    && typeof body.target_free_age === 'number'
+    && Number.isInteger(body.target_free_age)
+    && body.target_free_age >= 18
+    && body.target_free_age <= 100;
+}
+
 function buildFallback(b: StatementBody): string {
   const visionClue = b.vision_text
     ? b.vision_text.split('.')[0].trim()
@@ -38,12 +54,37 @@ const SYSTEM_PROMPT =
   "Make it feel true, not inspirational-poster.";
 
 export async function POST(req: NextRequest) {
-  let body: StatementBody;
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const authClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+  const { data: { user } } = await authClient.auth.getUser(authHeader.slice(7));
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const limit = await checkServerRateLimit(
+    `generate-freedom-statement:${user.id}`,
+    { maxRequests: 8, windowMs: 600_000 },
+  );
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+    );
+  }
+
+  let payload: unknown;
   try {
-    body = await req.json() as StatementBody;
+    payload = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  if (!isStatementBody(payload)) {
+    return NextResponse.json({ error: 'Invalid freedom statement request.' }, { status: 400 });
+  }
+  const body = payload;
 
   try {
     const openai = getOpenAI();
@@ -76,6 +117,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ freedom_statement: text });
   } catch (err) {
     console.error('[generate-freedom-statement]', err);
-    return NextResponse.json({ freedom_statement: buildFallback(body!) });
+    return NextResponse.json({ freedom_statement: buildFallback(body) });
   }
 }

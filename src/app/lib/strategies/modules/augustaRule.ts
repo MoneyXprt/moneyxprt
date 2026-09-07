@@ -47,6 +47,17 @@ export const augustaRule: Strategy = {
       };
     }
 
+    if (s.primaryResidenceValue <= 0) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason: 'The Augusta Rule applies only when you own a personal residence to rent.',
+        unlockCondition: 'Add your primary residence before evaluating this strategy.',
+        blockedBy: 'primaryResidenceValue',
+      };
+    }
+
     const taxableIncome = getTaxableIncome(s);
     const marginalRate  = getMarginalRate(taxableIncome, s.filingStatus, s.state);
     const annualRental  = AUGUSTA_RULE_DAILY_RATE * AUGUSTA_RULE_MAX_DAYS;
@@ -62,6 +73,10 @@ export const augustaRule: Strategy = {
         `total). The rental income is tax-free to you as homeowner (§280A(g) exclusion), and ` +
         `fully deductible to the business. At your ${(marginalRate * 100).toFixed(0)}% marginal ` +
         `rate that is approximately $${estimatedAnnualValue.toLocaleString()} in annual tax savings.`,
+      evidenceRequirements: [
+        'Written rental agreement and fair-market-rate support',
+        'Meeting agenda, attendees, date, and business purpose',
+      ],
     };
   },
 };

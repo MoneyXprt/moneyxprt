@@ -32,19 +32,14 @@ export default function AcceptInvitePage() {
   }, []);
 
   async function lookupInvitation() {
-    const sb = getBrowserSupabaseClient();
-    const { data, error } = await sb
-      .from('partner_invitations')
-      .select('accepted, invitee_email')
-      .eq('token', token)
-      .single();
-
-    if (error || !data) {
+    const response = await fetch(`/api/accept-invitation?token=${encodeURIComponent(token)}`);
+    const data = await response.json() as { accepted?: boolean; inviteeEmail?: string };
+    if (!response.ok || typeof data.accepted !== 'boolean') {
       setPageState('invalid');
       return;
     }
 
-    setInviteeEmail(data.invitee_email);
+    setInviteeEmail(data.inviteeEmail ?? 'your invited email');
     setPageState(data.accepted ? 'already_accepted' : 'valid');
   }
 

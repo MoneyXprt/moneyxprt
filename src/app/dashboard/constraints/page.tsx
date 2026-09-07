@@ -205,7 +205,7 @@ function ConstraintsInner() {
       (_e, s) => setSession(s),
     );
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isFresh]);
 
   const toggleConstraint = (key: ConstraintKey) => {
     setConstraints(prev => {

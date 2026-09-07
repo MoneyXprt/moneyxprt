@@ -18,6 +18,18 @@ interface UnappliedBonusRow {
   date_paid: string;
 }
 
+interface DebtSummaryRow {
+  id: string;
+  current_balance: number;
+}
+
+interface RecentPaymentRow {
+  id: string;
+  amount: number;
+  payment_date: string;
+  debts: { name: string } | null;
+}
+
 function fmtUsd(v: number) {
   return `$${Math.round(v).toLocaleString()}`;
 }
@@ -35,6 +47,33 @@ interface LoggableItem {
 }
 
 const LOGGABLE_ITEMS: LoggableItem[] = [
+  { id: 'cash-flow', title: 'Cash Flow Calendar', description: 'Plan paydays, bills, goals, and investing in one monthly view.', href: '/dashboard/cash-flow', icon: <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3M5 11h14M5 5h14v16H5z" /></svg> },
+  {
+    id: 'investments', title: 'Investment Returns', description: 'Record portfolio values and compare your cash-flow-adjusted return with the S&P 500.', href: '/dashboard/investments',
+    icon: <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l6-6 4 4 8-9M14 6h7v7" /></svg>,
+  },
+  {
+    id: 'goal-buckets',
+    title: 'Goal Buckets',
+    description: 'Set aside money for the goals that matter and keep a clear view of what is funded and what remains.',
+    href: '/dashboard/goals',
+    icon: (
+      <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18m9-9H3m15.5-5.5a7.5 7.5 0 11-13 0" />
+      </svg>
+    ),
+  },
+  {
+    id: 'net-worth',
+    title: 'Net Worth',
+    description: 'Save a quick monthly check-in for cash, investments, and debt. Track the trend without connecting your accounts.',
+    href: '/dashboard/net-worth',
+    icon: (
+      <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7 16l4-5 3 3 5-7" />
+      </svg>
+    ),
+  },
   {
     id: 'bonus-payments',
     title: 'Bonus Payments',
@@ -149,16 +188,32 @@ export default function ActualsPage() {
   const [applyError, setApplyError]             = useState<string | null>(null);
   // Array — a single cascading apply can pay off more than one debt in one action.
   const [payoffCelebrations, setPayoffCelebrations] = useState<PaidOffInfo[]>([]);
+  const [pendingBonusCount, setPendingBonusCount]   = useState(0);
+  const [activeDebts, setActiveDebts]               = useState<DebtSummaryRow[]>([]);
+  const [recentPayments, setRecentPayments]         = useState<RecentPaymentRow[]>([]);
 
   const fetchUnappliedBonuses = useCallback(async (userId: string) => {
     const sb = getBrowserSupabaseClient();
-    const { data } = await sb
-      .from('bonus_payments_actual')
-      .select('id, amount, net_amount, deployable_amount, date_paid')
-      .eq('user_id', userId)
-      .eq('applied_to_debt', false)
-      .order('date_paid', { ascending: false });
-    setUnappliedBonuses((data ?? []) as UnappliedBonusRow[]);
+    const [bonusesResult, debtResult, paymentsResult] = await Promise.all([
+      sb.from('bonus_payments_actual')
+        .select('id, amount, net_amount, deployable_amount, date_paid')
+        .eq('user_id', userId)
+        .eq('applied_to_debt', false)
+        .order('date_paid', { ascending: false }),
+      sb.from('debts')
+        .select('id, current_balance')
+        .eq('user_id', userId)
+        .eq('is_active', true),
+      sb.from('debt_payments')
+        .select('id, amount, payment_date, debts(name)')
+        .eq('user_id', userId)
+        .order('payment_date', { ascending: false })
+        .limit(5),
+    ]);
+    setUnappliedBonuses((bonusesResult.data ?? []) as UnappliedBonusRow[]);
+    setPendingBonusCount((bonusesResult.data ?? []).length);
+    setActiveDebts((debtResult.data ?? []) as DebtSummaryRow[]);
+    setRecentPayments((paymentsResult.data ?? []) as unknown as RecentPaymentRow[]);
   }, []);
 
   useEffect(() => {
@@ -228,7 +283,7 @@ export default function ActualsPage() {
         }
       }
 
-      setUnappliedBonuses(prev => prev.filter(b => b.id !== bonus.id));
+      await fetchUnappliedBonuses(userId);
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Failed to apply payment. Please try again.');
     } finally {
@@ -276,8 +331,23 @@ export default function ActualsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Actuals</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Log what actually happened — real numbers replace the estimates your plan uses.
+            Record real-world progress. Your plan uses these numbers instead of estimates.
           </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Active debt</p>
+            <p className="mt-1 text-xl font-bold text-gray-900 tabular-nums">
+              {fmtUsd(activeDebts.reduce((sum, debt) => sum + Number(debt.current_balance), 0))}
+            </p>
+            <p className="text-xs text-gray-500">{activeDebts.length} account{activeDebts.length === 1 ? '' : 's'} remaining</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Needs allocation</p>
+            <p className="mt-1 text-xl font-bold text-gray-900 tabular-nums">{pendingBonusCount}</p>
+            <p className="text-xs text-gray-500">bonus payment{pendingBonusCount === 1 ? '' : 's'} waiting</p>
+          </div>
         </div>
 
         {/* ── Debt paid off celebration(s) ──────────────────────────────
@@ -340,6 +410,23 @@ export default function ActualsPage() {
             <LoggableItemCard key={item.id} item={item} />
           ))}
         </div>
+
+        {recentPayments.length > 0 && (
+          <section className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+            <h2 className="text-sm font-semibold text-gray-900">Recent debt payments</h2>
+            <div className="mt-3 divide-y divide-gray-100">
+              {recentPayments.map(payment => (
+                <div key={payment.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div>
+                    <p className="text-xs font-medium text-gray-800">{payment.debts?.name ?? 'Debt payment'}</p>
+                    <p className="text-[11px] text-gray-400">{new Date(`${payment.payment_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                  </div>
+                  <p className="text-sm font-semibold text-emerald-700 tabular-nums">−{fmtUsd(payment.amount)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

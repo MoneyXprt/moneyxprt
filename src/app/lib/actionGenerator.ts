@@ -74,6 +74,8 @@ const STRATEGY_DESCRIPTIONS: Record<string, (value: number) => string> = {
   'reps':              (v) => `Real Estate Professional status lets your rental losses offset all income without limit. Requires 750+ hours/year and more time in RE than any other profession. Document every hour. Estimated savings: ${fmt(v)}/year.`,
 };
 
+const SPOUSE_BUSINESS_ACTION_PREFIX = 'life-event:spouse-business:';
+
 // ─── Core generator ───────────────────────────────────────────────────────────
 
 export function generateActions(
@@ -243,7 +245,7 @@ export function generateActions(
   if (hasIndex) {
     thisQuarter.push({
       title: 'Set up automatic index fund investing',
-      description: `Automate your monthly investment on the 1st of each month using low-cost total market funds (VTSAX or equivalent). Your deployable capital target: ${fmt(cap / 12)}/month.`,
+      description: `Automate your monthly investment on the 1st of each month using a diversified, low-cost fund choice that fits your plan and risk tolerance. Your deployable capital target: ${fmt(cap / 12)}/month. Confirm the investment choice with a qualified professional if you need personalized advice.`,
       category: 'this_quarter', phase: 3, strategy_id: null,
       estimated_annual_value: Math.round(cap * 0.07),
       estimated_months_saved: 0,
@@ -399,6 +401,23 @@ export async function saveActions(actions: ExecutionAction[], userId: string, cl
     //    Those rows stay untouched in the database.
     const actionsToUpsert = actions.filter(a => !completedTitles.has(a.title));
 
+    // A completed life-event action remains as a user record. An incomplete action for
+    // the same strategy is redundant once the regenerated core strategy action exists,
+    // though, and would otherwise double-count a single opportunity in Execute.
+    const coreStrategyIds = actionsToUpsert
+      .map(action => action.strategy_id)
+      .filter((strategyId): strategyId is string => strategyId !== null);
+    if (coreStrategyIds.length > 0) {
+      const duplicateIds = coreStrategyIds.map(id => `${SPOUSE_BUSINESS_ACTION_PREFIX}${id}`);
+      const { error: duplicateError } = await sb
+        .from('execution_actions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('completed', false)
+        .in('strategy_id', duplicateIds);
+      if (duplicateError) throw new Error(`saveActions duplicate cleanup failed: ${duplicateError.message}`);
+    }
+
     // 3. Delete all incomplete actions — safe because completed ones are preserved
     //    (the DELETE filter is .eq('completed', false)) and we just fetched/excluded
     //    anything that would conflict with the upsert below.
@@ -406,7 +425,8 @@ export async function saveActions(actions: ExecutionAction[], userId: string, cl
       .from('execution_actions')
       .delete()
       .eq('user_id', userId)
-      .eq('completed', false);
+      .eq('completed', false)
+      .or('strategy_id.is.null,strategy_id.not.like.life-event:%');
 
     if (deleteError) {
       console.error('saveActions: delete failed, aborting upsert:', deleteError.message);
@@ -418,10 +438,12 @@ export async function saveActions(actions: ExecutionAction[], userId: string, cl
     // 4. Upsert — onConflict matches the execution_actions_user_title_unique constraint.
     //    ignoreDuplicates: false means existing rows (e.g. any race-condition survivors)
     //    get updated rather than silently skipped.
-    const rows = actionsToUpsert.map(({ id: _id, user_id: _uid, created_at: _ca, ...rest }) => ({
-      ...rest,
-      user_id: userId,
-    }));
+    const rows = actionsToUpsert.map(({ id, user_id, created_at, ...rest }) => {
+      void id;
+      void user_id;
+      void created_at;
+      return { ...rest, user_id: userId };
+    });
 
     const { error: upsertError } = await sb
       .from('execution_actions')

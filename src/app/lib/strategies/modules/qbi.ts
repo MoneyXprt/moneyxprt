@@ -68,6 +68,19 @@ export const qbi: Strategy = {
       };
     }
 
+    if (qualifiedIncome <= 0) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'A business is on file, but no qualified business income is recorded for this tax year.',
+        unlockCondition:
+          'Add the business’s actual net qualified income before estimating this deduction.',
+        blockedBy: 'businessRevenue or income1099',
+      };
+    }
+
     const taxableIncome        = getTaxableIncome(s);
     const combinedMarginalRate = getMarginalRate(taxableIncome, s.filingStatus, s.state);
     const phaseoutStart        = QBI_PHASEOUT_START[s.filingStatus];

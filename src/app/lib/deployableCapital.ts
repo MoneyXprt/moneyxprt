@@ -134,9 +134,9 @@ function getBonusPeriods(plan: BonusPlan, now: Date): { start: Date; end: Date }
 export function computeAnnualBonusNetEstimate(
   bonusPlan: BonusPlan | null,
   bonusPayments: BonusPayment[],
+  now = new Date(),
 ): number {
   if (!bonusPlan) return 0;
-  const now = new Date();
   if (bonusPlan.frequency === 'monthly') return estimateNetBonus(bonusPlan.planAmount) * 12;
 
   const periods = getBonusPeriods(bonusPlan, now);
@@ -163,11 +163,11 @@ export function computeAnnualBonusNetEstimate(
 export function computeAnnualBonusNetEstimateSource(
   bonusPlan: BonusPlan | null,
   bonusPayments: BonusPayment[],
+  now = new Date(),
 ): BonusAmountSource {
   if (!bonusPlan) return 'none';
   if (bonusPlan.frequency === 'monthly') return 'estimated';
 
-  const now = new Date();
   const periods = getBonusPeriods(bonusPlan, now);
   const results = periods.map(({ start, end }) =>
     getEffectiveBonusForPeriod(bonusPlan, bonusPayments, start, end, now));
@@ -242,6 +242,7 @@ export function computeAnnualDeployableTotal(
   s: FinancialSnapshot,
   bonusPlan: BonusPlan | null,
   bonusPayments: BonusPayment[],
+  now = new Date(),
 ): number {
-  return computeMonthlyDeployable(s) * 12 + computeAnnualBonusNetEstimate(bonusPlan, bonusPayments);
+  return computeMonthlyDeployable(s) * 12 + computeAnnualBonusNetEstimate(bonusPlan, bonusPayments, now);
 }

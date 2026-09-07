@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
+import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
 
 // Prevent Next.js from statically pre-rendering this dynamic API route at build time.
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,16 @@ export async function POST(req: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const limit = await checkServerRateLimit(
+      `parse-voice-log:${user.id}`,
+      { maxRequests: 20, windowMs: 600_000 },
+    );
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Try again shortly.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      );
     }
 
     // ── Request body ──────────────────────────────────────────────────────────
@@ -167,10 +178,7 @@ export async function POST(req: NextRequest) {
 
     if (dbError) {
       console.error('[parse-voice-log] DB insert error:', dbError);
-      return NextResponse.json(
-        { error: 'Database insert failed', details: dbError.message },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: 'Could not save your voice log. Please try again.' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, log: inserted }, { status: 201 });

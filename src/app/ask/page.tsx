@@ -1,49 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { useState } from 'react';
 
 export default function AskPage() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const [utm, setUtm] = useState({
-    utm_source: '',
-    utm_medium: '',
-    utm_campaign: '',
-    referrer: '',
-    user_agent: ''
-  });
-
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    setUtm({
-      utm_source: url.searchParams.get('utm_source') || '',
-      utm_medium: url.searchParams.get('utm_medium') || '',
-      utm_campaign: url.searchParams.get('utm_campaign') || '',
-      referrer: document.referrer || '',
-      user_agent: navigator.userAgent || ''
-    });
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage('');
 
     try {
-      const res = await fetch('https://ayeckgcillxfivvnyhaj.supabase.co/functions/v1/ask', {
+      const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
         },
         body: JSON.stringify({
           email: email.trim(),
-          utm_source: utm.utm_source || '',
-          utm_medium: utm.utm_medium || '',
-          utm_campaign: utm.utm_campaign || '',
-          referrer: utm.referrer || '',
-          user_agent: utm.user_agent || ''
         }),
       });
       if (!res.ok) {
@@ -62,8 +35,8 @@ export default function AskPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-white px-4 py-12">
-      <h1 className="text-3xl font-bold mb-4">Ask a Question</h1>
-      <p className="mb-6 text-gray-700">Get personalized financial guidance from MoneyXprt.</p>
+      <h1 className="text-3xl font-bold mb-4">Join the MoneyXprt waitlist</h1>
+      <p className="mb-6 text-gray-700">Leave your email and we&apos;ll let you know when access opens.</p>
       <form onSubmit={handleSubmit} className="w-full max-w-md flex flex-col gap-4">
         <input
           type="email"

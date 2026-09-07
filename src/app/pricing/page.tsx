@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { supabase } from '@/app/utils/supabaseClient';
 
 export default function WaitlistPage() {
   const [email, setEmail] = useState('');
@@ -12,19 +11,16 @@ export default function WaitlistPage() {
     setError(null);
     setSuccess(false);
 
-    console.log('🔍 SUBMITTING TO WAITLIST...');
-    console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.log('KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-
-    const { data, error } = await supabase.from('waitlist').insert([{ email }]);
-    console.log('🚨 RESULT:', { data, error });
-    console.log({ email, response: { data, error } });
-
-    if (error) {
-      setError(error.message);
-    } else {
+    try {
+      const response = await fetch('/api/waitlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+      });
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(body?.error || 'Could not join the waitlist.');
       setEmail('');
       setSuccess(true);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Could not join the waitlist.');
     }
   };
 

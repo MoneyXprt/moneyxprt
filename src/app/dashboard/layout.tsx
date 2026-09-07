@@ -8,7 +8,13 @@ import BottomNav from '@/components/BottomNav';
 // reserved-space spacer below. Route groups can't solve this: a nested layout only
 // ever adds to the layout chain, it can never remove dashboard/layout.tsx from routes
 // nested under app/dashboard/ — so gating here, by pathname, is the actual fix.
-const FULLSCREEN_ROUTES = ['/dashboard/freedom-vision', '/dashboard/freedom-calculator'];
+const FULLSCREEN_ROUTES = [
+  '/dashboard/freedom-vision',
+  '/dashboard/freedom-calculator',
+  // Life Events Engine — selection screen + every guided flow run as a
+  // distraction-free wizard with their own back nav, no BottomNav.
+  '/dashboard/life-events',
+];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

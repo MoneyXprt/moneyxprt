@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MoneyXprt
 
-## Getting Started
+MoneyXprt helps high-income W-2 earners build, execute, and track a practical financial-freedom plan. It includes tax-strategy planning, execution actions, actuals, net-worth tracking, goal buckets, investment performance, cash-flow planning, partner access, and CPA-ready reports.
 
-First, run the development server:
+## Local setup
+
+1. Use Node.js 20.9 or newer.
+2. Copy [`.env.example`](./.env.example) to `.env.local` and provide your own values. Never commit `.env.local`.
+3. Install dependencies and start the app:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Required Supabase setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Apply the migrations in `supabase/migrations/` in filename order. For the current release, this includes every migration through `20260906000011_create_atomic_partner_invitation_acceptance.sql`.
 
-## Learn More
+Before inviting users, complete the two-account verification in [the partner RLS runbook](./docs/rls-partner-verification.md).
 
-To learn more about Next.js, take a look at the following resources:
+## Validation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm test -- --run
+npx tsc --noEmit
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`npm run build` uses Next.js 16 with Webpack, the production build path verified for this project.
 
-## Deploy on Vercel
+## Production
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [production configuration](./docs/production-config.md) and [the launch sequence](./docs/launch-sequence.md) before enabling customer traffic. Financial, tax, and investment figures are planning estimates; the product should not be represented as individualized financial, legal, or tax advice.

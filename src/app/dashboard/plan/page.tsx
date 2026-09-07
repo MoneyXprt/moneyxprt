@@ -26,33 +26,28 @@ export default function PlanFlowController() {
 
     async function route() {
       const { data: { session } } = await sb.auth.getSession();
-      console.log('[plan/route] session:', session ? `uid=${session.user.id}` : 'null');
       if (!session) { router.replace('/dashboard/freedom-vision'); return; }
 
       const userId = session.user.id;
 
-      const { data: profile, error: profileError } = await sb
+      const { data: profile } = await sb
         .from('freedom_profiles')
         .select('freedom_type, freedom_number_monthly')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      console.log('[plan/route] profile:', profile, 'error:', profileError?.message);
-
       const visionDone = !!profile?.freedom_type;
       if (!visionDone) { router.replace('/dashboard/freedom-vision'); return; }
 
       const numberDone = Number(profile?.freedom_number_monthly ?? 0) > 0;
       if (!numberDone) { router.replace('/dashboard/freedom-calculator'); return; }
 
-      const { data: snapRows, error: snapError } = await sb
+      const { data: snapRows } = await sb
         .from('financial_snapshots')
         .select('id')
         .eq('user_id', userId)
         .limit(1);
-      console.log('[plan/route] snapRows:', snapRows, 'error:', snapError?.message);
-
       const snapshotDone = Array.isArray(snapRows) && snapRows.length > 0;
       if (!snapshotDone) { router.replace('/dashboard/audit'); return; }
 
@@ -62,12 +57,9 @@ export default function PlanFlowController() {
         sb.from('asset_preferences').select('id').eq('user_id', userId).limit(1),
         sb.from('user_constraints').select('id').eq('user_id', userId).maybeSingle(),
       ]);
-      console.log('[plan/route] assetRows:', assetRows, 'constraints:', constraints);
-
       const phase2Done = Array.isArray(assetRows) && assetRows.length > 0 && !!constraints;
       if (!phase2Done) { router.replace('/dashboard/plan/phase2'); return; }
 
-      console.log('[plan/route] all steps complete → /dashboard/plan/results');
       router.replace('/dashboard/plan/results');
     }
 

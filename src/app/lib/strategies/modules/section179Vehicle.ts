@@ -16,6 +16,8 @@
  */
 
 import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
+import { getTaxableIncome } from '../taxConstants2026';
+import { estimateDeductionTaxImpact } from '../taxImpact';
 
 const ID   = 'section-179-vehicle';
 const NAME = 'Section 179 Heavy Vehicle Deduction';
@@ -104,24 +106,31 @@ export const section179Vehicle: Strategy = {
     // ── ACTIVE ────────────────────────────────────────────────────────────────
     const businessUseFraction  = s.vehicleBusinessUsePercent / 100;
     const deductibleAmount     = Math.min(s.vehiclePurchasePrice * businessUseFraction, SECTION_179_VEHICLE_CAP);
-    const estimatedAnnualValue = Math.round(deductibleAmount);
+    const taxImpact = estimateDeductionTaxImpact(deductibleAmount, s, getTaxableIncome(s));
 
     return {
       ...base,
       state: 'ACTIVE',
-      estimatedAnnualValue,
+      estimatedAnnualValue: taxImpact.estimatedCashSavings,
+      taxImpact,
       reason:
         `Your $${s.vehiclePurchasePrice.toLocaleString()} vehicle, used ` +
         `${s.vehicleBusinessUsePercent}% for business, qualifies for a §179 deduction of ` +
-        `$${estimatedAnnualValue.toLocaleString()}` +
+        `$${taxImpact.annualDeduction.toLocaleString()}` +
         (deductibleAmount >= SECTION_179_VEHICLE_CAP
           ? ` (capped at the $${SECTION_179_VEHICLE_CAP.toLocaleString()} 2026 SUV/heavy-vehicle limit).`
-          : '.'),
+          : '.') +
+        ` At your estimated marginal rate, that is about $${taxImpact.estimatedCashSavings.toLocaleString()} in current-year income-tax savings.`,
       cautionNote:
         'Requires genuine, documented business use exceeding 50% — a mileage log is ' +
         'mandatory. This is one of the most IRS-scrutinized vehicle deductions; buying a ' +
         'vehicle primarily for the tax benefit rather than real business need can trigger ' +
         'disallowance and penalties. Confirm with your CPA before purchasing.',
+      evidenceRequirements: [
+        'Purchase invoice and placed-in-service date',
+        'Vehicle GVWR documentation',
+        'Contemporaneous mileage log showing business use above 50%',
+      ],
     };
   },
 };

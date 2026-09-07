@@ -5,28 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
-
-// ─── Toggle component ─────────────────────────────────────────────────────────
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-        on ? 'bg-emerald-600' : 'bg-gray-200'
-      }`}
-    >
-      <span
-        className={`inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ${
-          on ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  );
-}
+import FeedbackForm from '@/components/FeedbackForm';
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
@@ -41,18 +20,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, sublabel, right }: { label: string; sublabel?: string; right: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-5 py-4">
-      <div className="min-w-0">
-        <p className="text-sm text-gray-900">{label}</p>
-        {sublabel && <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>}
-      </div>
-      <div className="shrink-0">{right}</div>
-    </div>
-  );
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type PartnerStatus = 'loading' | 'none' | 'pending' | 'connected' | 'is_partner';
@@ -60,7 +27,7 @@ type PartnerStatus = 'loading' | 'none' | 'pending' | 'connected' | 'is_partner'
 type PendingInvite = { id: string; token: string; invitee_email: string };
 
 // ─── Partner section ────────────────────────────────────────────────────────
-// Module scope (like Toggle/Section/Row above) rather than defined inside
+// Module scope rather than defined inside
 // SettingsPage's body — a function declared inside a component's render body is
 // re-created on every render, so React sees a new component type on every keystroke
 // into the invite-email input and remounts the whole subtree, dropping focus.
@@ -108,7 +75,7 @@ function PartnerSection({
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">Connected to a shared plan</p>
-              <p className="text-xs text-gray-400">You can see your household's freedom plan and check off your actions.</p>
+              <p className="text-xs text-gray-400">You can see your household&apos;s freedom plan and check off your actions.</p>
             </div>
           </div>
         </div>
@@ -219,15 +186,6 @@ function PartnerSection({
   );
 }
 
-interface NotificationPrefs {
-  weeklyCheckin: boolean;
-  milestones: boolean;
-  taxDeadlines: boolean;
-  monthlyProgress: boolean;
-}
-
-const NOTIF_KEY = 'mxprt_notif_prefs';
-
 export default function SettingsPage() {
   const router = useRouter();
   const [session, setSession]             = useState<Session | null>(null);
@@ -237,7 +195,6 @@ export default function SettingsPage() {
   const [partnerStatus, setPartnerStatus] = useState<PartnerStatus>('loading');
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [connectedEmail, setConnectedEmail] = useState('');
-  const [inviterEmail, setInviterEmail]   = useState(''); // when this user is the partner
   const [inviteInput, setInviteInput]     = useState('');
   const [inviteError, setInviteError]     = useState('');
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
@@ -245,16 +202,9 @@ export default function SettingsPage() {
   const [removingPartner, setRemovingPartner] = useState(false);
   const [inviteLink, setInviteLink]       = useState('');
 
-  // Notifications (localStorage only — no backend yet)
-  const [notifs, setNotifs] = useState<NotificationPrefs>({
-    weeklyCheckin: true,
-    milestones: true,
-    taxDeadlines: true,
-    monthlyProgress: true,
-  });
-
   // Plan actions
   const [rebuilding, setRebuilding]       = useState(false);
+  const [exporting, setExporting]         = useState(false);
   const [error, setError]                 = useState<string | null>(null);
 
   // ── Auth + data load ───────────────────────────────────────────────────────
@@ -292,14 +242,6 @@ export default function SettingsPage() {
       .maybeSingle();
 
     if (partnerProfile) {
-      // Try to find the inviter's email from partner_invitations
-      const { data: inv } = await sb
-        .from('partner_invitations')
-        .select('invitee_email')
-        .eq('inviter_user_id', partnerProfile.user_id)
-        .eq('accepted', true)
-        .maybeSingle();
-      setInviterEmail(inv?.invitee_email ?? ''); // invitee_email is OUR email
       setPartnerStatus('is_partner');
       return;
     }
@@ -308,12 +250,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    // Load notifications from localStorage
-    try {
-      const stored = localStorage.getItem(NOTIF_KEY);
-      if (stored) setNotifs(JSON.parse(stored));
-    } catch { /* ignore */ }
-
     const sb = getBrowserSupabaseClient();
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
@@ -323,12 +259,6 @@ export default function SettingsPage() {
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => subscription.unsubscribe();
   }, [loadPartnerData]);
-
-  function updateNotif(key: keyof NotificationPrefs, value: boolean) {
-    const next = { ...notifs, [key]: value };
-    setNotifs(next);
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(next));
-  }
 
   // ── Partner actions ────────────────────────────────────────────────────────
 
@@ -412,28 +342,59 @@ export default function SettingsPage() {
 
     setRebuilding(true);
     setError(null);
-    const sb = getBrowserSupabaseClient();
-    const uid = session.user.id;
-
-    const steps: Array<{ table: string; label: string }> = [
-      { table: 'execution_actions', label: 'execution actions' },
-      { table: 'generated_plans',   label: 'generated plans' },
-      { table: 'asset_preferences', label: 'asset preferences' },
-      { table: 'user_constraints',  label: 'constraints' },
-      { table: 'plan_assumptions',  label: 'plan assumptions' },
-      { table: 'freedom_profiles',  label: 'freedom profile' },
-    ];
-
-    for (const step of steps) {
-      const { error: deleteError } = await sb.from(step.table).delete().eq('user_id', uid);
-      if (deleteError) {
-        setError(`Failed to clear ${step.label}: ${deleteError.message}`);
-        setRebuilding(false);
-        return;
-      }
+    const { error: resetError } = await getBrowserSupabaseClient().rpc('reset_my_plan');
+    if (resetError) {
+      console.error('[rebuild-plan]', resetError);
+      setError('Could not reset your plan. Please try again.');
+      setRebuilding(false);
+      return;
     }
-
     router.push('/dashboard/freedom-vision');
+  }
+
+  async function exportMyData() {
+    if (!session) return;
+    setExporting(true);
+    setError(null);
+    const sb = getBrowserSupabaseClient();
+    const tables = [
+      'freedom_profiles', 'financial_snapshots', 'financial_observations',
+      'generated_plans', 'execution_actions', 'asset_preferences',
+      'user_constraints', 'plan_assumptions', 'financial_phase_status',
+      'goal_buckets', 'investment_checkins', 'cash_flow_events',
+      'debts', 'debt_payments', 'bonus_plan', 'bonus_payments_actual',
+      'material_participation_logs', 'partner_invitations',
+      'product_feedback',
+    ];
+    try {
+      const results = await Promise.all(tables.map(async (table) => {
+        const { data, error: exportError } = await sb.from(table).select('*').eq('user_id', session.user.id);
+        // Keep exports available while an older deployment is awaiting the
+        // feedback-table migration; every other table remains required.
+        if (exportError && table === 'product_feedback' && ['42P01', 'PGRST205'].includes(exportError.code ?? '')) {
+          return [table, []] as const;
+        }
+        if (exportError) throw new Error(`Could not export ${table}.`);
+        return [table, data] as const;
+      }));
+      const archive = {
+        exportedAt: new Date().toISOString(),
+        accountEmail: session.user.email,
+        data: Object.fromEntries(results),
+      };
+      const blob = new Blob([JSON.stringify(archive, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `moneyxprt-data-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      console.error('[data-export]', exportError);
+      setError('Could not export your data. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   }
 
   // ── Guards ─────────────────────────────────────────────────────────────────
@@ -498,30 +459,6 @@ export default function SettingsPage() {
           inviteSubmitting={inviteSubmitting}
         />
 
-        {/* Notifications */}
-        <Section title="Notifications">
-          <Row
-            label="Weekly plan check-in"
-            sublabel="Remind me to review my progress each week"
-            right={<Toggle on={notifs.weeklyCheckin} onChange={v => updateNotif('weeklyCheckin', v)} />}
-          />
-          <Row
-            label="Freedom date milestones"
-            sublabel="Alert when my freedom date moves"
-            right={<Toggle on={notifs.milestones} onChange={v => updateNotif('milestones', v)} />}
-          />
-          <Row
-            label="Tax strategy deadlines"
-            sublabel="Remind me before year-end tax cutoffs"
-            right={<Toggle on={notifs.taxDeadlines} onChange={v => updateNotif('taxDeadlines', v)} />}
-          />
-          <Row
-            label="Monthly progress summary"
-            sublabel="Freedom Score, strategies activated, and freedom date — sent on the 1st of each month"
-            right={<Toggle on={notifs.monthlyProgress} onChange={v => updateNotif('monthlyProgress', v)} />}
-          />
-        </Section>
-
         {/* Your Plan */}
         <Section title="Your Plan">
           <div className="px-5 py-4 space-y-3">
@@ -534,7 +471,7 @@ export default function SettingsPage() {
               {rebuilding && (
                 <span className="inline-block w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
               )}
-              {rebuilding ? 'Clearing plan data…' : 'Regenerate my plan'}
+              {rebuilding ? 'Resetting plan…' : 'Regenerate my plan'}
             </button>
             {error && (
               <p className="text-xs text-red-500 leading-snug">{error}</p>
@@ -546,6 +483,24 @@ export default function SettingsPage() {
               Generate CPA year-end report (PDF)
             </Link>
           </div>
+        </Section>
+
+        <Section title="Your data">
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm leading-5 text-gray-600">Download a JSON copy of the information you have saved in MoneyXprt. Keep the file private: it includes your financial details.</p>
+            <button
+              type="button"
+              onClick={exportMyData}
+              disabled={exporting}
+              className="w-full min-h-11 rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              {exporting ? 'Preparing export…' : 'Download my data'}
+            </button>
+          </div>
+        </Section>
+
+        <Section title="Feedback">
+          <FeedbackForm userId={session.user.id} />
         </Section>
 
         <div className="pb-4">

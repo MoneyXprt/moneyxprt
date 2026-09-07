@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Tooltip } from '@/components/Tooltip';
+import { SomethingChangedCard } from '@/components/SomethingChangedCard';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { formatCurrency as fmt } from '@/app/lib/format';
 import { calculateFreedomScore } from '@/app/lib/freedomScore';
 import type { FreedomScoreBreakdown } from '@/app/lib/freedomScore';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
@@ -51,10 +53,6 @@ interface PlanData {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return `$${Math.round(n).toLocaleString('en-US')}`;
-}
 
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 
@@ -483,6 +481,7 @@ function QuickActions({ repsRelevant }: { repsRelevant: boolean }) {
     // when REPS isn't relevant yet (see computeRepsRelevance in loadData).
     ...(repsRelevant ? [{ label: 'Log REPS hours', sub: 'Material participation', href: '/dashboard/logs', icon: '⏱️' }] : []),
     { label: 'Full plan',          sub: 'Roadmap & tax',               href: '/dashboard/plan/results',         icon: '📋' },
+    { label: 'Monthly check-in',   sub: 'Review your progress',         href: '/dashboard/monthly-check-in',      icon: '📅' },
     { label: 'Assumptions',        sub: 'Fine-tune projections',       href: '/dashboard/plan/assumptions',     icon: '🎛️' },
   ];
   return (
@@ -637,8 +636,8 @@ function TaxYearDeadlineBanner({ daysLeft, unimplemented }: { daysLeft: number; 
             Tax Year Closes in {daysLeft} Day{daysLeft !== 1 ? 's' : ''}
           </p>
           <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-            You have {unimplemented} unimplemented {unimplemented === 1 ? 'strategy' : 'strategies'} that {unimplemented === 1 ? 'expires' : 'expire'} December 31.
-            {' '}Every day you wait is money you can&apos;t recover.
+            You have {unimplemented} unfinished {unimplemented === 1 ? 'strategy' : 'strategies'} with potential year-end deadlines.
+            {' '}Review the timing and documentation with your CPA before acting.
           </p>
         </div>
       </div>
@@ -755,9 +754,9 @@ export default function DashboardHome() {
         .gte('date', `${currentYear}-01-01`)
         .lt('date', `${currentYear + 1}-01-01`),
       sb.from('financial_snapshots')
-        .select('created_at, monthly_rental_income, monthly_dividend_income, currently_owns_rental')
+        .select('snapshot_date, monthly_rental_income, monthly_dividend_income, currently_owns_rental')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .order('snapshot_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
       sb.from('execution_actions')
@@ -807,8 +806,11 @@ export default function DashboardHome() {
     setRepsRelevant(repsRelevantNow);
 
     if (snapshotRow) {
-      setSnapshotDate(snapshotRow.created_at as string);
-      setStale(daysSince(snapshotRow.created_at as string) >= 90);
+      setSnapshotDate(snapshotRow.snapshot_date as string);
+      const snapshotChangedAfterPlan = Boolean(
+        planRow && new Date(snapshotRow.snapshot_date as string) > new Date(planRow.created_at as string),
+      );
+      setStale(snapshotChangedAfterPlan || daysSince(snapshotRow.snapshot_date as string) >= 90);
     } else if (planRow) {
       // Fall back to plan date if no snapshot date available
       setStale(daysSince(planRow.created_at as string) >= 90);
@@ -975,11 +977,11 @@ export default function DashboardHome() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-xs text-amber-800 leading-relaxed">
-                Your plan is based on data from{' '}
+                Your financial snapshot changed after this plan was generated, or the plan is based on data from{' '}
                 <strong>{snapshotDate
                   ? new Date(snapshotDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                   : 'over 90 days ago'
-                }</strong>. Life changes — keep your plan current.
+                }</strong>. Regenerate the plan after updating numbers so every screen uses the same assumptions.
               </p>
             </div>
             <div className="flex gap-2 pl-6">
@@ -987,7 +989,7 @@ export default function DashboardHome() {
                 className="flex-1 text-center py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition">
                 Update my numbers
               </Link>
-              <Link href="/dashboard/adjust"
+              <Link href="/dashboard/life-events"
                 className="flex-1 text-center py-2 rounded-lg bg-white border border-amber-300 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition">
                 Something changed
               </Link>
@@ -1022,6 +1024,9 @@ export default function DashboardHome() {
 
             {/* Freedom gap hero */}
             <FreedomGapHero plan={plan} />
+
+            {/* Life Events Engine entry point */}
+            <SomethingChangedCard />
 
             {/* Timeline entry point */}
             <Link href="/dashboard/plan/timeline"
@@ -1069,10 +1074,8 @@ export default function DashboardHome() {
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 px-0.5">Quick actions</p>
               <QuickActions repsRelevant={repsRelevant} />
-              <Link href="/dashboard/adjust"
-                className="mt-3 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition py-2">
-                Something changed in my financial situation →
-              </Link>
+              {/* "Something changed" now lives in the SomethingChangedCard below
+                  the Freedom Gap hero — no duplicate entry point here. */}
             </div>
           </>
         )}

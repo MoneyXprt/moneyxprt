@@ -318,7 +318,7 @@ function AssetPreferencesInner() {
       (_e, s) => setSession(s),
     );
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isFresh]);
 
   const toggle = (id: AssetId) => {
     setSelected(prev => {
@@ -341,31 +341,22 @@ function AssetPreferencesInner() {
       const userId = user.id;
 
       const selectedArray = Array.from(selected);
-      console.log('[asset-preferences/save] userId:', userId);
-      console.log('[asset-preferences/save] selected count:', selectedArray.length, '— ids:', selectedArray);
-
       // Delete all existing rows for this user first (replace-on-revisit)
       const { error: deleteError } = await sb
         .from('asset_preferences')
         .delete()
         .eq('user_id', userId);
-      console.log('[asset-preferences/save] delete error:', deleteError?.message ?? 'none');
       if (deleteError) throw deleteError;
 
-      // Build the rows array and log before inserting
       const rows = selectedArray.map(asset_type => ({
         user_id:    userId,
         asset_type,
         selected:   true,
       }));
-      console.log('[asset-preferences/save] inserting rows:', JSON.stringify(rows));
-
-      const { data: inserted, error: insertError } = await sb
+      const { error: insertError } = await sb
         .from('asset_preferences')
         .insert(rows)
         .select('asset_type');
-      console.log('[asset-preferences/save] inserted:', inserted);
-      console.log('[asset-preferences/save] insert error:', insertError?.message ?? 'none');
       if (insertError) throw insertError;
 
       router.push('/dashboard/plan');

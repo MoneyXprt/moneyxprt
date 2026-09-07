@@ -98,12 +98,26 @@ export interface StrategyResult {
   state: StrategyState;
   estimatedAnnualValue: number;
   valueType: 'cash' | 'projected';
+  /** Present when a strategy's cash value is derived from an income-tax deduction. */
+  taxImpact?: TaxImpactEstimate;
   reason: string;
   unlockCondition?: string;
   blockedBy?: string;
   /** A bold, prominent warning distinct from the standard reason/deep-dive disclaimer —
    *  e.g. IRS-scrutiny risk on a strategy that's easy to abuse. Only set when relevant. */
   cautionNote?: string;
+  /** Records the user should retain before treating this as implemented. */
+  evidenceRequirements?: readonly string[];
+}
+
+/** Separates a deduction from the estimated cash tax reduction it creates. */
+export interface TaxImpactEstimate {
+  annualDeduction: number;
+  federalMarginalRate: number;
+  stateMarginalRate: number;
+  estimatedFederalSavings: number;
+  estimatedStateSavings: number;
+  estimatedCashSavings: number;
 }
 
 export interface Strategy {

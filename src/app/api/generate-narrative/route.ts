@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
+import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,9 +115,78 @@ interface NarrativeRequest {
   projectedTaxStrategyAnnualValue?: number;
 }
 
+function isNarrativeRequest(value: unknown): value is NarrativeRequest {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Record<string, unknown>;
+  const numericFields = [
+    'freedomNumber', 'currentPassiveIncome', 'gapMonthly', 'projectedFreedomYear',
+    'deployableCapitalPerYear', 'taxStrategyAnnualValue', 'targetFreeAge',
+  ];
+  const stringsValid = typeof body.freedomVision === 'string' && body.freedomVision.length <= 2_000
+    && typeof body.freedomType === 'string' && body.freedomType.length <= 100;
+  const numbersValid = numericFields.every((field) => typeof body[field] === 'number'
+    && Number.isFinite(body[field]));
+  const phasesValid = Array.isArray(body.phases) && body.phases.length <= 10
+    && body.phases.every(isNarrativePhase);
+  const roadmapValid = Array.isArray(body.assetRoadmap) && body.assetRoadmap.length <= 20
+    && body.assetRoadmap.every(isRoadmapRow);
+  return stringsValid && numbersValid && phasesValid && roadmapValid;
+}
+
+function isNarrativePhase(value: unknown): value is NarrativeRequest['phases'][number] {
+  if (!value || typeof value !== 'object') return false;
+  const phase = value as Record<string, unknown>;
+  return typeof phase.number === 'number'
+    && Number.isFinite(phase.number)
+    && typeof phase.title === 'string'
+    && phase.title.length <= 300
+    && Array.isArray(phase.actions)
+    && phase.actions.length <= 20
+    && phase.actions.every(isNarrativeAction);
+}
+
+function isNarrativeAction(value: unknown): value is { text: string } {
+  if (!value || typeof value !== 'object') return false;
+  const action = value as Record<string, unknown>;
+  return typeof action.text === 'string' && action.text.length <= 1_000;
+}
+
+function isRoadmapRow(value: unknown): value is NarrativeRequest['assetRoadmap'][number] {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return ['year', 'calendarYear', 'cumulativeMonthlyIncome'].every((field) =>
+    typeof row[field] === 'number' && Number.isFinite(row[field]))
+    && typeof row.action === 'string'
+    && row.action.length <= 1_000;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body: NarrativeRequest = await req.json();
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const authClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const { data: { user } } = await authClient.auth.getUser(authHeader.slice(7));
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const limit = await checkServerRateLimit(
+      `generate-narrative:${user.id}`,
+      { maxRequests: 12, windowMs: 600_000 },
+    );
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Try again shortly.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      );
+    }
+    const payload: unknown = await req.json();
+    if (!isNarrativeRequest(payload)) {
+      return NextResponse.json({ error: 'Invalid narrative request.' }, { status: 400 });
+    }
+    const body = payload;
 
     // Trim roadmap to first 5 years on the server side as well
     body.assetRoadmap = body.assetRoadmap.slice(0, 5);

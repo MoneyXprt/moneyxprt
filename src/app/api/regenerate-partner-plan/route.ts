@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
 import { regeneratePlanAndActions } from '@/app/lib/planRegeneration';
+import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const limit = await checkServerRateLimit(
+      `regenerate-partner-plan:${user.id}`,
+      { maxRequests: 10, windowMs: 60 * 60 * 1_000 },
+    );
+    if (!limit.allowed) return NextResponse.json(
+      { error: 'Too many plan regenerations. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+    );
 
     const body = await req.json().catch(() => null) as { primaryUserId?: string } | null;
     const primaryUserId = body?.primaryUserId;
@@ -55,7 +64,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[regenerate-partner-plan]', err);
-    const msg = err instanceof Error ? err.message : 'Failed to regenerate plan';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: 'Could not regenerate the plan. Please try again.' }, { status: 500 });
   }
 }

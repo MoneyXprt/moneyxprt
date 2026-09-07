@@ -378,7 +378,6 @@ function Phase2Inner() {
 
   // Loaded context
   const [snapshot, setSnapshot]         = useState<FinancialSnapshot | null>(null);
-  const [snapshotId, setSnapshotId]     = useState<string | null>(null);
   const [activeStrategies, setActiveStrategies] = useState<StrategyResult[]>([]);
   const [bonusPlan, setBonusPlan]         = useState<BonusPlan | null>(null);
   const [bonusPayments, setBonusPayments] = useState<BonusPayment[]>([]);
@@ -472,7 +471,6 @@ function Phase2Inner() {
 
       if (snapResult) {
         setSnapshot(snapResult.snapshot);
-        setSnapshotId(snapResult.id);
         const actives = evaluateAll(snapResult.snapshot)
           .filter(r => r.state === 'ACTIVE' && (r.estimatedAnnualValue ?? 0) > 0);
         setActiveStrategies(actives);
@@ -602,11 +600,9 @@ function Phase2Inner() {
       .from('financial_snapshots')
       .select('id')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+      .order('snapshot_date', { ascending: false })
       .limit(1)
       .maybeSingle();
-
-    console.log('[phase2-section3] latest snapshot row:', { id: latestRow?.id, fetchErr: fetchErr?.message ?? null });
 
     if (fetchErr || !latestRow?.id) {
       setSaveError('Could not find your snapshot to update — please refresh and try again.');
@@ -614,20 +610,11 @@ function Phase2Inner() {
     }
 
     const payload = { considering_real_estate: true };
-    console.log('[phase2-section3] about to save considering_real_estate:', {
-      ...payload,
-      target_acquisition_timeframe: opt,
-      snapshot_id: latestRow.id,
-      user_id: user.id,
-    });
-
     const { data, error } = await sb
       .from('financial_snapshots')
       .update(payload)
       .eq('id', latestRow.id)
       .select();
-
-    console.log('[phase2-section3] save result:', { data, error: error?.message ?? null });
 
     if (error) {
       setSaveError(`Could not save real estate preference: ${error.message}`);
@@ -707,23 +694,16 @@ function Phase2Inner() {
         .from('financial_snapshots')
         .select('id')
         .eq('user_id', uid)
-        .order('created_at', { ascending: false })
+        .order('snapshot_date', { ascending: false })
         .limit(1)
         .maybeSingle();
-
-      console.log('[phase2-submit] about to save considering_real_estate:', {
-        considering_real_estate: consideringRE,
-        snapshot_id: latestSnapRow?.id ?? null,
-        user_id: uid,
-      });
 
       if (latestSnapRow?.id) {
         const { data: updData, error: coreUpdErr } = await sb
           .from('financial_snapshots')
-          .update({ considering_real_estate: consideringRE })
+          .update({ considering_real_estate: consideringRE, snapshot_date: new Date().toISOString() })
           .eq('id', latestSnapRow.id)
           .select();
-        console.log('[phase2-submit] save result:', { data: updData, error: coreUpdErr?.message ?? null });
         if (coreUpdErr) throw new Error(`Failed to save real estate preference: ${coreUpdErr.message}`);
         if (!updData || updData.length === 0) {
           // data: [] with no error = RLS is blocking the UPDATE.
@@ -742,6 +722,7 @@ function Phase2Inner() {
       const { error: newColsErr } = await sb.from('financial_snapshots').update({
         excluded_strategy_ids:        JSON.stringify(Array.from(excludedStrategyIds)),
         target_acquisition_timeframe: acquisitionTimeframe || null,
+        snapshot_date:                new Date().toISOString(),
       }).eq('user_id', uid);
       if (newColsErr) console.warn('[phase2-submit] new-column update (run migrations if this fires):', newColsErr.message);
 
@@ -794,7 +775,7 @@ function Phase2Inner() {
     return (
       <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 leading-tight">Let's stabilize first.</h1>
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight">Let&apos;s stabilize first.</h1>
           <p className="mt-2 text-sm text-gray-500 leading-relaxed">
             A couple of things from your snapshot deserve attention before we build the asset roadmap.
           </p>

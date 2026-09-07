@@ -70,6 +70,19 @@ export const hireKids: Strategy = {
       };
     }
 
+    if (s.businessRevenue <= 0) {
+      return {
+        ...base,
+        state: 'LOCKED',
+        estimatedAnnualValue: 0,
+        reason:
+          'A business is on file, but its current-year revenue has not been recorded.',
+        unlockCondition:
+          'Add actual business revenue before sizing a reasonable, deductible payroll amount.',
+        blockedBy: 'businessRevenue',
+      };
+    }
+
     // ── Value calculation ────────────────────────────────────────────────────
     // Cap per-child wages at the lesser of:
     //   (a) KID_STANDARD_DEDUCTION — child's entire wage is sheltered from federal tax
@@ -98,6 +111,10 @@ export const hireKids: Strategy = {
         `zero federal income tax (below the $${KID_STANDARD_DEDUCTION.toLocaleString()} ` +
         `standard deduction). At your ${rateDisplay}% marginal rate, ` +
         `estimated annual savings: ~$${savingsDisplay}.`,
+      evidenceRequirements: [
+        'Age-appropriate duties and market-rate wage support',
+        'Timesheets, payroll records, and payment trail',
+      ],
     };
   },
 };

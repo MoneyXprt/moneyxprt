@@ -12,6 +12,7 @@ import type { GeneratedPlan, AssetRoadmapRow } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { Session } from '@supabase/supabase-js';
+import { LifeEventSuccessToast } from '@/components/LifeEventSuccessToast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -162,8 +163,8 @@ function ActionCard({
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {action.estimated_annual_value > 0 && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold tabular-nums">
-                  {fmt(action.estimated_annual_value)}/yr
-                  <Tooltip content={`Implementing this strategy adds ${fmt(action.estimated_annual_value)}/yr to your annual asset-building capacity by reducing your tax burden by that amount each year.`} />
+                  Est. {fmt(action.estimated_annual_value)}/yr
+                  <Tooltip content="This is an estimate, not a realized result. Confirm eligibility, timing, and documentation before relying on it in your plan." />
                 </span>
               )}
               {action.estimated_months_saved > 0 && (
@@ -363,7 +364,6 @@ export default function ExecutePage() {
   const [repsRelevant, setRepsRelevant]     = useState(false);
   // Partner context
   const [isPartnerView, setIsPartnerView]   = useState(false);
-  const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing]         = useState(false);
 
   const dismissOverlay = useCallback(() => setMilestoneOverlay(null), []);
@@ -489,7 +489,6 @@ export default function ExecutePage() {
     const primaryUserId = primaryProfile?.user_id ?? userId;
     const asPartner = !!primaryProfile;
     setIsPartnerView(asPartner);
-    setEffectiveUserId(primaryUserId);
 
     // Vision text (fire async — don't block main load)
     sb.from('freedom_profiles')
@@ -521,7 +520,7 @@ export default function ExecutePage() {
           .from('financial_snapshots')
           .select('currently_owns_rental')
           .eq('user_id', primaryUserId)
-          .order('created_at', { ascending: false })
+          .order('snapshot_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
       ]);
@@ -593,16 +592,12 @@ export default function ExecutePage() {
       completed_by: nowCompleted ? currentUserId : null,
     };
 
-    console.log('[toggleAction] writing to DB:', { id, payload });
-
     const sb = getBrowserSupabaseClient();
     const { data, error } = await sb
       .from('execution_actions')
       .update(payload)
       .eq('id', id)
       .select();
-
-    console.log('[toggleAction] DB result:', { data, error: error?.message ?? null });
 
     if (error) {
       console.error('[toggleAction] update failed — rolling back optimistic UI:', error.message);
@@ -675,8 +670,8 @@ export default function ExecutePage() {
   const quarterDone = thisQuarterActions.filter(a => a.completed).length;
   const currentUserId = session.user.id;
 
-  // Unprotected value = sum of non-completed strategy-linked actions with a value
-  const unimplementedValue = actions
+  // Estimated value attached to unfinished strategy-linked actions.
+  const pendingEstimatedValue = actions
     .filter(a => !a.completed && (a.estimated_annual_value ?? 0) > 0 && a.strategy_id)
     .reduce((s, a) => s + (a.estimated_annual_value ?? 0), 0);
 
@@ -684,6 +679,7 @@ export default function ExecutePage() {
 
   return (
     <>
+      <LifeEventSuccessToast />
       {/* Milestone overlay — full-screen for This Year completions */}
       {milestoneOverlay && (
         <MilestoneOverlay
@@ -770,7 +766,7 @@ export default function ExecutePage() {
                   </span>
                   {activatedSavings > 0 && (
                     <span className="text-[#C9A84C] font-bold tabular-nums">
-                      {fmt(activatedSavings)}/yr activated
+                      Est. {fmt(activatedSavings)}/yr marked complete
                     </span>
                   )}
                   {freedomYear && (
@@ -787,12 +783,25 @@ export default function ExecutePage() {
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              {unimplementedValue > 0 && (
+              {pendingEstimatedValue > 0 && (
                 <p className="text-amber-300 text-[10px] mt-2 leading-relaxed">
-                  {fmt(unimplementedValue)}/year currently unprotected — every unimplemented strategy is money leaving your plan.
+                  Up to {fmt(pendingEstimatedValue)}/year in estimated value remains to be validated and acted on.
                 </p>
               )}
             </div>
+
+            {pendingEstimatedValue > 0 && (
+              <div className="flex items-start gap-3 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-xs leading-relaxed text-sky-900">
+                  <span className="font-semibold">Validate before you count it.</span>{' '}
+                  Tax and income figures are planning estimates. Review eligibility and keep the required records with your CPA before treating a strategy as implemented.
+                  <Link href="/dashboard/audit/results" className="ml-1 font-semibold text-sky-800 underline underline-offset-2">Review assumptions</Link>
+                </p>
+              </div>
+            )}
 
             {/* THIS WEEK */}
             {thisWeekActions.length > 0 && (
