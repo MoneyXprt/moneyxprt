@@ -13,4 +13,5 @@ export { accountablePlan }         from './modules/accountablePlan';
 export { homeOfficeDeduction }     from './modules/homeOfficeDeduction';
 export { startupCosts }            from './modules/startupCosts';
 export { section179Vehicle }       from './modules/section179Vehicle';
+export { section179Equipment }     from './modules/section179Equipment';
 export { registry, evaluateAll }   from './registry';

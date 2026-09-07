@@ -96,6 +96,7 @@ const LOGGABLE_ITEMS: LoggableItem[] = [
       </svg>
     ),
   },
+  { id: 'section-179-equipment', title: 'Equipment & Machinery', description: 'Track business equipment placed in service so your Section 179 strategy uses the right assets.', href: '/dashboard/equipment', icon: <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M4 19h16M6 19V9h12v10M9 9V5h6v4" /></svg> },
 ];
 
 // ─── Auth gate ────────────────────────────────────────────────────────────────

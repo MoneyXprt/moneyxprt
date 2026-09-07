@@ -16,16 +16,18 @@
  */
 
 import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
-import { getTaxableIncome } from '../taxConstants2026';
+import {
+  getTaxableIncome,
+  SECTION_179_HEAVY_VEHICLE_CAP_2026,
+  SECTION_179_VEHICLE_BUSINESS_USE_THRESHOLD_PCT,
+} from '../taxConstants2026';
 import { estimateDeductionTaxImpact } from '../taxImpact';
+import { allocateSection179Deduction } from '../section179Shared';
 
 const ID   = 'section-179-vehicle';
 const NAME = 'Section 179 Heavy Vehicle Deduction';
 
 /** IRC §179 SUV/heavy-vehicle deduction cap for 2026, and the business-use threshold. */
-const SECTION_179_VEHICLE_CAP    = 30_500;
-const BUSINESS_USE_THRESHOLD_PCT = 50;
-
 export const section179Vehicle: Strategy = {
   id: ID,
   name: NAME,
@@ -73,7 +75,7 @@ export const section179Vehicle: Strategy = {
     }
 
     // ── Gate 3: business-use percentage must exceed 50% ──────────────────────
-    if (s.vehicleBusinessUsePercent <= BUSINESS_USE_THRESHOLD_PCT) {
+    if (s.vehicleBusinessUsePercent <= SECTION_179_VEHICLE_BUSINESS_USE_THRESHOLD_PCT) {
       return {
         ...base,
         state: 'LOCKED',
@@ -104,8 +106,11 @@ export const section179Vehicle: Strategy = {
     }
 
     // ── ACTIVE ────────────────────────────────────────────────────────────────
-    const businessUseFraction  = s.vehicleBusinessUsePercent / 100;
-    const deductibleAmount     = Math.min(s.vehiclePurchasePrice * businessUseFraction, SECTION_179_VEHICLE_CAP);
+    const deductibleAmount = allocateSection179Deduction({
+      vehiclePurchasePrice: s.vehiclePurchasePrice,
+      vehicleBusinessUsePercent: s.vehicleBusinessUsePercent,
+      equipmentAssets: s.section179EquipmentAssets ?? [],
+    }).vehicleDeduction;
     const taxImpact = estimateDeductionTaxImpact(deductibleAmount, s, getTaxableIncome(s));
 
     return {
@@ -117,8 +122,8 @@ export const section179Vehicle: Strategy = {
         `Your $${s.vehiclePurchasePrice.toLocaleString()} vehicle, used ` +
         `${s.vehicleBusinessUsePercent}% for business, qualifies for a §179 deduction of ` +
         `$${taxImpact.annualDeduction.toLocaleString()}` +
-        (deductibleAmount >= SECTION_179_VEHICLE_CAP
-          ? ` (capped at the $${SECTION_179_VEHICLE_CAP.toLocaleString()} 2026 SUV/heavy-vehicle limit).`
+        (s.vehiclePurchasePrice * (s.vehicleBusinessUsePercent / 100) >= SECTION_179_HEAVY_VEHICLE_CAP_2026
+          ? ` (subject to the $${SECTION_179_HEAVY_VEHICLE_CAP_2026.toLocaleString()} 2026 SUV/heavy-vehicle limit and the shared annual §179 allowance).`
           : '.') +
         ` At your estimated marginal rate, that is about $${taxImpact.estimatedCashSavings.toLocaleString()} in current-year income-tax savings.`,
       cautionNote:

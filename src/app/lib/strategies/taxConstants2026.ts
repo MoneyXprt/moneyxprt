@@ -12,6 +12,17 @@ import type { FinancialSnapshot } from './types';
 
 export const TAX_YEAR = 2026;
 
+// ─── Section 179 (IRC §179) ─────────────────────────────────────────────────
+
+/** Maximum aggregate Section 179 deduction before the annual phase-out. */
+export const SECTION_179_OVERALL_CAP_2026 = 1_220_000;
+/** Total qualifying property basis at which the Section 179 cap begins phasing out. */
+export const SECTION_179_PHASE_OUT_THRESHOLD_2026 = 3_050_000;
+/** Maximum Section 179 deduction for a qualifying heavy SUV in 2026. */
+export const SECTION_179_HEAVY_VEHICLE_CAP_2026 = 30_500;
+/** Minimum documented business use required for a qualifying Section 179 vehicle. */
+export const SECTION_179_VEHICLE_BUSINESS_USE_THRESHOLD_PCT = 50;
+
 // ─── Standard deductions ────────────────────────────────────────────────────
 
 export const STANDARD_DEDUCTION = {

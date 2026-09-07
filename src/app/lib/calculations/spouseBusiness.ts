@@ -41,8 +41,6 @@ import {
   PAYROLL_REVENUE_FRACTION,
   HOME_OFFICE_SIMPLIFIED_RATE_PER_SQFT,
   HOME_OFFICE_SIMPLIFIED_SQFT_CAP,
-  SECTION_179_VEHICLE_CAP,
-  SECTION_179_BUSINESS_USE_FLOOR_PCT,
   SCORP_DISTRIBUTION_FRACTION,
   SCORP_ELECTION_DEADLINE,
 } from './spouseBusinessConstants';
@@ -371,43 +369,6 @@ export const SPOUSE_BUSINESS_STRATEGIES: readonly StrategyDefinition[] = [
       return `Your ${Math.round(deductibleSqft)} sq ft office is a ${money(
         deductibleSqft * HOME_OFFICE_SIMPLIFIED_RATE_PER_SQFT,
       )} deduction — about ${money(savings)} in tax savings${rateEstimateNote(ctx)}.`;
-    },
-  },
-  {
-    id: 'section-179',
-    name: 'Write off equipment and vehicles this year',
-    category: 'tax',
-    learnMore:
-      'Section 179 lets a business deduct the full cost of qualifying equipment and heavy ' +
-      'vehicles in the year they’re put into use, instead of depreciating over years. Vehicles ' +
-      'need documented business use above 50% and a mileage log. The item must be in service by ' +
-      'December 31.',
-    unlockCondition:
-      'Add what was spent on equipment or a business vehicle (and its business-use %) in the full audit.',
-    isRelevant: (ctx) =>
-      ctx.expenseCategories.has('equipment') || ctx.expenseCategories.has('vehicle'),
-    isUnlocked: (ctx) =>
-      (ctx.expenseCategories.has('equipment') || ctx.expenseCategories.has('vehicle')) &&
-      ctx.vehiclePurchaseAmount > 0 &&
-      ctx.vehicleBusinessUsePercent > SECTION_179_BUSINESS_USE_FLOOR_PCT,
-    annualSavings: (ctx) => {
-      const deductible = Math.min(
-        ctx.vehiclePurchaseAmount * (ctx.vehicleBusinessUsePercent / 100),
-        SECTION_179_VEHICLE_CAP,
-      );
-      return deductible * ctx.effectiveMarginalRate;
-    },
-    deadline: (ctx) => ctx.yearEndDeadline,
-    describe: (ctx, savings) => {
-      const deductible = Math.min(
-        ctx.vehiclePurchaseAmount * (ctx.vehicleBusinessUsePercent / 100),
-        SECTION_179_VEHICLE_CAP,
-      );
-      return `Deduct ${money(deductible)} of your ${money(
-        ctx.vehiclePurchaseAmount,
-      )} vehicle now instead of over six years — about ${money(savings)} in tax savings this year${rateEstimateNote(
-        ctx,
-      )}.`;
     },
   },
   {

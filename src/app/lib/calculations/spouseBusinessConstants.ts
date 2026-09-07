@@ -117,10 +117,6 @@ export const PAYROLL_REVENUE_FRACTION = FAMILY_PAYROLL_REVENUE_FRACTION;
 export const HOME_OFFICE_SIMPLIFIED_RATE_PER_SQFT = 5;
 export const HOME_OFFICE_SIMPLIFIED_SQFT_CAP = 300;
 
-/** IRC §179 SUV/heavy-vehicle deduction cap for 2026, and the business-use floor. */
-export const SECTION_179_VEHICLE_CAP = 30_500;
-export const SECTION_179_BUSINESS_USE_FLOOR_PCT = 50;
-
 // ─── S-Corp split (mirrors strategies/sCorpElection.ts) ──────────────────────
 
 /** Fraction of S-Corp revenue taken as a reasonable W-2 salary (SE/FICA applies). */

@@ -1,3 +1,5 @@
+import type { Section179EquipmentAssetInput } from './section179Shared';
+
 export type StrategyState = 'ACTIVE' | 'VERIFY' | 'LOCKED' | 'NOT_APPLICABLE';
 
 export interface FinancialSnapshot {
@@ -28,6 +30,7 @@ export interface FinancialSnapshot {
   hasHeavyVehicle: boolean;
   vehiclePurchasePrice: number;
   vehicleBusinessUsePercent: number;
+  section179EquipmentAssets?: readonly Section179EquipmentAssetInput[];
   // ── Spouse income ────────────────────────────────────────────────────────────
   spouseW2Income: number;
   spouseBusinessRevenue: number;

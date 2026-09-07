@@ -262,25 +262,6 @@ describe('evaluateSpouseBusinessStrategies — expense-driven strategies', () =>
     expect(byId(result, 'home-office')).toMatchObject({ unlocked: true, annualSavings: 240 });
   });
 
-  it('unlocks §179 only with a vehicle amount and >50% business use', () => {
-    const base = { monthlyRevenue: 2_000, marginalRate: 0.32, expenseCategories: ['vehicle'] as const };
-
-    const noAmount = evaluateSpouseBusinessStrategies(inputs(base), { now: NOW });
-    expect(byId(noAmount, 'section-179').unlocked).toBe(false);
-
-    const lowUse = evaluateSpouseBusinessStrategies(
-      inputs({ ...base, vehiclePurchaseAmount: 40_000, vehicleBusinessUsePercent: 40 }),
-      { now: NOW },
-    );
-    expect(byId(lowUse, 'section-179').unlocked).toBe(false);
-
-    const unlocked = evaluateSpouseBusinessStrategies(
-      inputs({ ...base, vehiclePurchaseAmount: 40_000, vehicleBusinessUsePercent: 80 }),
-      { now: NOW },
-    );
-    // min(40,000 × 0.80, 30,500) = 30,500 ; × 0.32 = 9,760
-    expect(byId(unlocked, 'section-179')).toMatchObject({ unlocked: true, annualSavings: 9760 });
-  });
 });
 
 // ─── Augusta rule depends on home ownership ─────────────────────────────────

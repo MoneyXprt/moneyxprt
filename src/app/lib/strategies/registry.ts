@@ -13,6 +13,7 @@ import { accountablePlan }  from './modules/accountablePlan';
 import { homeOfficeDeduction } from './modules/homeOfficeDeduction';
 import { startupCosts }        from './modules/startupCosts';
 import { section179Vehicle }   from './modules/section179Vehicle';
+import { section179Equipment } from './modules/section179Equipment';
 
 /**
  * All registered strategy modules.
@@ -33,6 +34,7 @@ export const registry: Strategy[] = [
   homeOfficeDeduction,
   startupCosts,
   section179Vehicle,
+  section179Equipment,
 ];
 
 /**

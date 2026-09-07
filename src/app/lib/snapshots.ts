@@ -1,6 +1,7 @@
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
+import { listSection179EquipmentRecords } from './section179EquipmentRecords';
 
 // ─── DB row type ─────────────────────────────────────────────────────────────
 
@@ -291,7 +292,9 @@ export async function getSnapshotForServer(
     .maybeSingle();
   if (error) throw new Error(`getSnapshotForServer: ${error.message}`);
   if (!data) return null;
-  return fromRow(data as SnapshotRow);
+  const snapshot = fromRow(data as SnapshotRow);
+  const equipment = await listSection179EquipmentRecords(userId, sb);
+  return { ...snapshot, section179EquipmentAssets: equipment };
 }
 
 export async function saveSnapshot(snapshot: FinancialSnapshot): Promise<SnapshotRow> {
@@ -320,7 +323,9 @@ export async function getLatestSnapshotWithId(): Promise<{ snapshot: FinancialSn
     .maybeSingle();
   if (error) throw new Error(`getLatestSnapshotWithId failed: ${error.message}`);
   if (!data) return null;
-  return { snapshot: fromRow(data as SnapshotRow), id: (data as SnapshotRow).id };
+  const row = data as SnapshotRow;
+  const equipment = await listSection179EquipmentRecords(user.id, sb);
+  return { snapshot: { ...fromRow(row), section179EquipmentAssets: equipment }, id: row.id };
 }
 
 export async function getLatestSnapshot(): Promise<FinancialSnapshot | null> {
@@ -336,5 +341,6 @@ export async function getLatestSnapshot(): Promise<FinancialSnapshot | null> {
     .maybeSingle();
   if (error) throw new Error(`getLatestSnapshot failed: ${error.message}`);
   if (!data) return null;
-  return fromRow(data as SnapshotRow);
+  const equipment = await listSection179EquipmentRecords(user.id, sb);
+  return { ...fromRow(data as SnapshotRow), section179EquipmentAssets: equipment };
 }
