@@ -1,4 +1,9 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 
 const painPoints = [
   'You save. But your money sits in a bank earning nothing while inflation eats it.',
@@ -22,6 +27,28 @@ function EarlyAccessButton() {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    getBrowserSupabaseClient().auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!mounted) return;
+        if (session) {
+          router.replace('/dashboard');
+          return;
+        }
+        setCheckingAuth(false);
+      })
+      .catch(() => { if (mounted) setCheckingAuth(false); });
+
+    return () => { mounted = false; };
+  }, [router]);
+
+  if (checkingAuth) return <main className="min-h-screen bg-[#0d1f15]" />;
+
   return (
     <main className="bg-[#0d1f15] text-white">
       <section className="flex min-h-screen items-center px-6 py-20 sm:px-10">

@@ -1,0 +1,100 @@
+create table public.debt_corrections (
+  id uuid primary key default gen_random_uuid(),
+  debt_id uuid not null references public.debts(id) on delete cascade,
+  field_changed text not null check (field_changed in ('current_balance', 'is_active', 'paid_off_at')),
+  old_value jsonb not null,
+  new_value jsonb not null,
+  reason text not null check (char_length(btrim(reason)) >= 10),
+  corrected_at timestamptz not null default now(),
+  corrected_by uuid not null references auth.users(id) on delete restrict
+);
+
+create index idx_debt_corrections_debt_corrected_at on public.debt_corrections (debt_id, corrected_at desc);
+
+alter table public.debt_corrections enable row level security;
+
+create policy "Users can view corrections for own debts"
+  on public.debt_corrections for select
+  using (exists (select 1 from public.debts where debts.id = debt_corrections.debt_id and debts.user_id = auth.uid()));
+
+create or replace function public.correct_debt_record(
+  target_debt_id uuid,
+  target_current_balance numeric,
+  target_is_active boolean,
+  correction_reason text
+)
+returns public.debts
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  debt_row public.debts%rowtype;
+  target_paid_off_at timestamptz;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication is required.';
+  end if;
+  if char_length(btrim(coalesce(correction_reason, ''))) < 10 then
+    raise exception 'A correction reason of at least 10 characters is required.';
+  end if;
+  if target_current_balance < 0 then
+    raise exception 'Current balance cannot be negative.';
+  end if;
+  if target_current_balance = 0 and target_is_active then
+    raise exception 'An active debt must have a balance greater than zero.';
+  end if;
+  if target_current_balance > 0 and not target_is_active then
+    raise exception 'A paid-off debt must have a current balance of zero.';
+  end if;
+
+  select * into debt_row from public.debts where id = target_debt_id for update;
+  if not found or debt_row.user_id <> auth.uid() then
+    raise exception 'Debt record not found.';
+  end if;
+
+  target_paid_off_at := case
+    when target_is_active then null
+    else coalesce(debt_row.paid_off_at, now())
+  end;
+  if debt_row.current_balance is not distinct from target_current_balance
+    and debt_row.is_active is not distinct from target_is_active
+    and debt_row.paid_off_at is not distinct from target_paid_off_at then
+    raise exception 'No debt fields were changed.';
+  end if;
+
+  if debt_row.current_balance is distinct from target_current_balance then
+    insert into public.debt_corrections (debt_id, field_changed, old_value, new_value, reason, corrected_by)
+    values (target_debt_id, 'current_balance', to_jsonb(debt_row.current_balance), to_jsonb(target_current_balance), btrim(correction_reason), auth.uid());
+  end if;
+  if debt_row.is_active is distinct from target_is_active then
+    insert into public.debt_corrections (debt_id, field_changed, old_value, new_value, reason, corrected_by)
+    values (target_debt_id, 'is_active', to_jsonb(debt_row.is_active), to_jsonb(target_is_active), btrim(correction_reason), auth.uid());
+  end if;
+  if debt_row.paid_off_at is distinct from target_paid_off_at then
+    insert into public.debt_corrections (debt_id, field_changed, old_value, new_value, reason, corrected_by)
+    values (target_debt_id, 'paid_off_at', coalesce(to_jsonb(debt_row.paid_off_at), 'null'::jsonb), coalesce(to_jsonb(target_paid_off_at), 'null'::jsonb), btrim(correction_reason), auth.uid());
+  end if;
+
+  update public.debts
+  set current_balance = target_current_balance, is_active = target_is_active, paid_off_at = target_paid_off_at
+  where id = target_debt_id
+  returning * into debt_row;
+
+  with ranked_debts as (
+    select id, row_number() over (order by current_balance asc, id asc) as next_order
+    from public.debts
+    where user_id = auth.uid() and is_active
+  )
+  update public.debts
+  set payoff_order = ranked_debts.next_order
+  from ranked_debts
+  where debts.id = ranked_debts.id;
+
+  update public.debts set payoff_order = null where user_id = auth.uid() and not is_active;
+  return debt_row;
+end;
+$$;
+
+revoke all on function public.correct_debt_record(uuid, numeric, boolean, text) from public;
+grant execute on function public.correct_debt_record(uuid, numeric, boolean, text) to authenticated;
