@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Tooltip } from '@/components/Tooltip';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { ExecutionAction } from '@/app/lib/actionGenerator';
 import { computeRepsRelevance } from '@/app/lib/planGenerator';
@@ -377,7 +378,7 @@ export default function ExecutePage() {
     const sb = getBrowserSupabaseClient();
     const currentYear = new Date().getFullYear();
 
-    const [planResult, snapshotResult, repsResult, bonusPlanResult, phaseResult] = await Promise.all([
+    const [planResult, snapshotResult, repsResult, bonusPlanResult, phaseResult, strategyEvaluationContext] = await Promise.all([
       sb
         .from('generated_plans')
         .select('freedom_gap, phases, tax_strategy_stack, asset_roadmap, deployable_capital_per_year')
@@ -403,6 +404,7 @@ export default function ExecutePage() {
         .select('phase')
         .eq('user_id', userId)
         .maybeSingle(),
+      loadTaxConstantsByYear(currentYear),
     ]);
 
     if (!planResult.data || !snapshotResult) {
@@ -436,7 +438,7 @@ export default function ExecutePage() {
     } : null;
 
     const financialPhase = (phaseResult.data?.phase as FinancialPhase | undefined) ?? null;
-    const generated = generateActions(plan, snapshotResult, repsHours, bonusPlan, financialPhase);
+    const generated = generateActions(plan, snapshotResult, repsHours, bonusPlan, financialPhase, strategyEvaluationContext);
     try {
       await saveActions(generated, userId);
     } catch (e) {

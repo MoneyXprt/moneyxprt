@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
 import { computeMonthlyTakeHome, computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal, computeGrossAnnualIncome } from '@/app/lib/deployableCapital';
@@ -112,13 +113,16 @@ function SnapshotSummaryInner() {
 
   const load = useCallback(async (s: Session) => {
     try {
-      const latest = await getLatestSnapshot();
+      const [latest, strategyEvaluationContext] = await Promise.all([
+        getLatestSnapshot(),
+        loadTaxConstantsByYear(new Date().getFullYear()),
+      ]);
       if (!latest) {
         router.replace('/dashboard/audit');
         return;
       }
       setSnapshot(latest);
-      setResults(evaluateAll(latest));
+      setResults(evaluateAll(latest, strategyEvaluationContext));
 
       const sb = getBrowserSupabaseClient();
       const [{ data: bonusPlanRow }, { data: bonusPaymentRows }, { data: debtRows }] = await Promise.all([

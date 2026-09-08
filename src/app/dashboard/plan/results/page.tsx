@@ -5,6 +5,7 @@ import { Tooltip } from '@/components/Tooltip';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { generateBaselinePlan, savePlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
@@ -537,7 +538,10 @@ export default function PlanResultsPage() {
       }));
 
       // Fetch snapshot separately (returns FinancialSnapshot | null, not { data })
-      const snapshotResult = await getLatestSnapshot();
+      const [snapshotResult, strategyEvaluationContext] = await Promise.all([
+        getLatestSnapshot(),
+        loadTaxConstantsByYear(new Date().getFullYear()),
+      ]);
 
       // Validate completeness
       const gaps: MissingStepInfo[] = [];
@@ -577,6 +581,7 @@ export default function PlanResultsPage() {
           },
         },
         snapshot,
+        strategyEvaluationContext,
         assetPreferences: (assetRows ?? []).map(r => r.asset_type as string),
         constraints: {
           capitalPerYear:  Number(constraintsRow!.capital_per_year),
@@ -630,7 +635,7 @@ export default function PlanResultsPage() {
       // Regenerate execution actions — once per page mount, not on every render
       if (!actionsSaved.current) {
         actionsSaved.current = true;
-        const execActions = generateActions(generated, snapshot, 0, bonusPlan, financialPhase);
+        const execActions = generateActions(generated, snapshot, 0, bonusPlan, financialPhase, strategyEvaluationContext);
         saveActions(execActions, userId).catch(e => console.warn('saveActions failed:', e));
       }
 

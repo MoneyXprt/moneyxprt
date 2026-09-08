@@ -1,4 +1,4 @@
-import type { Strategy, FinancialSnapshot, StrategyResult } from './types';
+import type { Strategy, FinancialSnapshot, StrategyEvaluationContext, StrategyResult } from './types';
 import { augustaRule }      from './modules/augustaRule';
 import { hireKids }         from './modules/hireKids';
 import { backdoorRoth }     from './modules/backdoorRoth';
@@ -42,7 +42,10 @@ export const registry: Strategy[] = [
  * Returns results sorted: ACTIVE → VERIFY → LOCKED → NOT_APPLICABLE,
  * then by estimatedAnnualValue descending within each group.
  */
-export function evaluateAll(snapshot: FinancialSnapshot): StrategyResult[] {
+export function evaluateAll(
+  snapshot: FinancialSnapshot,
+  context?: StrategyEvaluationContext,
+): StrategyResult[] {
   const STATE_ORDER: Record<string, number> = {
     ACTIVE:         0,
     VERIFY:         1,
@@ -51,7 +54,7 @@ export function evaluateAll(snapshot: FinancialSnapshot): StrategyResult[] {
   };
 
   return registry
-    .map(strategy => strategy.evaluate(snapshot))
+    .map(strategy => strategy.evaluate(snapshot, context))
     .sort((a, b) => {
       const stateA = STATE_ORDER[a.state] ?? 9;
       const stateB = STATE_ORDER[b.state] ?? 9;

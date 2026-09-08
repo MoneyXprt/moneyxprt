@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import {
-  SECTION_179_HEAVY_VEHICLE_CAP_2026,
-  SECTION_179_OVERALL_CAP_2026,
-  SECTION_179_PHASE_OUT_THRESHOLD_2026,
-  TAX_YEAR,
-} from './taxConstants2026';
 import { allocateSection179Deduction } from './section179Shared';
+import type { Section179TaxConstants } from './types';
+
+const TAX_CONSTANTS: Section179TaxConstants = {
+  taxYear: 2026,
+  heavyVehicleCap: 32_000,
+  maxDeduction: 2_560_000,
+  phaseOutThreshold: 4_090_000,
+  completePhaseOut: 6_650_000,
+};
 
 describe('allocateSection179Deduction', () => {
   it('caps vehicle and equipment together rather than granting separate annual caps', () => {
@@ -14,17 +17,18 @@ describe('allocateSection179Deduction', () => {
       vehicleBusinessUsePercent: 100,
       equipmentAssets: [{
         description: 'Commercial embroidery machine',
-        purchasePrice: 1_500_000,
+        purchasePrice: TAX_CONSTANTS.maxDeduction,
         businessUsePercent: 100,
         placedInServiceDate: '2026-09-07',
       }],
+      taxConstants: TAX_CONSTANTS,
     });
 
-    expect(allocation.requestedDeduction).toBeGreaterThan(SECTION_179_OVERALL_CAP_2026);
-    expect(allocation.allowedDeduction).toBe(SECTION_179_OVERALL_CAP_2026);
-    expect(allocation.vehicleDeduction + allocation.equipmentDeduction).toBeCloseTo(SECTION_179_OVERALL_CAP_2026);
-    expect(allocation.vehicleDeduction).toBeLessThan(SECTION_179_HEAVY_VEHICLE_CAP_2026);
-    expect(allocation.equipmentDeduction).toBeLessThan(SECTION_179_OVERALL_CAP_2026);
+    expect(allocation.requestedDeduction).toBeGreaterThan(TAX_CONSTANTS.maxDeduction);
+    expect(allocation.allowedDeduction).toBe(TAX_CONSTANTS.maxDeduction);
+    expect(allocation.vehicleDeduction + allocation.equipmentDeduction).toBeCloseTo(TAX_CONSTANTS.maxDeduction);
+    expect(allocation.vehicleDeduction).toBeLessThan(TAX_CONSTANTS.heavyVehicleCap);
+    expect(allocation.equipmentDeduction).toBeLessThan(TAX_CONSTANTS.maxDeduction);
   });
 
   it('reduces the shared allowance once qualifying property exceeds the phase-out threshold', () => {
@@ -34,20 +38,32 @@ describe('allocateSection179Deduction', () => {
       vehicleBusinessUsePercent: 0,
       equipmentAssets: [{
         description: 'Production equipment',
-        purchasePrice: SECTION_179_PHASE_OUT_THRESHOLD_2026 + phaseOutExcess,
+        purchasePrice: TAX_CONSTANTS.phaseOutThreshold + phaseOutExcess,
         businessUsePercent: 100,
         placedInServiceDate: '2026-09-07',
       }],
+      taxConstants: TAX_CONSTANTS,
     });
 
     expect(allocation.phaseOutReduction).toBe(phaseOutExcess);
-    expect(allocation.allowedDeduction).toBe(SECTION_179_OVERALL_CAP_2026 - phaseOutExcess);
+    expect(allocation.allowedDeduction).toBe(TAX_CONSTANTS.maxDeduction - phaseOutExcess);
+  });
+
+  it('eliminates the shared allowance at the complete phase-out point', () => {
+    const allocation = allocateSection179Deduction({
+      vehiclePurchasePrice: 0, vehicleBusinessUsePercent: 0,
+      equipmentAssets: [{ description: 'Large production equipment', purchasePrice: TAX_CONSTANTS.completePhaseOut, businessUsePercent: 100, placedInServiceDate: `${TAX_CONSTANTS.taxYear}-01-01` }],
+      taxConstants: TAX_CONSTANTS,
+    });
+
+    expect(allocation.allowedDeduction).toBe(0);
   });
 
   it('includes property placed in the current tax year', () => {
     const allocation = allocateSection179Deduction({
       vehiclePurchasePrice: 0, vehicleBusinessUsePercent: 0,
-      equipmentAssets: [{ description: 'Current-year machine', purchasePrice: 11_000, businessUsePercent: 100, placedInServiceDate: `${TAX_YEAR}-01-01` }],
+      equipmentAssets: [{ description: 'Current-year machine', purchasePrice: 11_000, businessUsePercent: 100, placedInServiceDate: `${TAX_CONSTANTS.taxYear}-01-01` }],
+      taxConstants: TAX_CONSTANTS,
     });
 
     expect(allocation.qualifyingEquipmentCount).toBe(1);
@@ -57,7 +73,8 @@ describe('allocateSection179Deduction', () => {
   it('excludes property placed in a prior tax year', () => {
     const allocation = allocateSection179Deduction({
       vehiclePurchasePrice: 0, vehicleBusinessUsePercent: 0,
-      equipmentAssets: [{ description: 'Prior-year machine', purchasePrice: 11_000, businessUsePercent: 100, placedInServiceDate: `${TAX_YEAR - 1}-12-31` }],
+      equipmentAssets: [{ description: 'Prior-year machine', purchasePrice: 11_000, businessUsePercent: 100, placedInServiceDate: `${TAX_CONSTANTS.taxYear - 1}-12-31` }],
+      taxConstants: TAX_CONSTANTS,
     });
 
     expect(allocation.qualifyingEquipmentCount).toBe(0);

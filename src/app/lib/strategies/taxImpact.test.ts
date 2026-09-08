@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { estimateDeductionTaxImpact } from './taxImpact';
 
+const HEAVY_VEHICLE_DEDUCTION = 32_000;
+
 describe('estimateDeductionTaxImpact', () => {
   it('keeps the deduction distinct from estimated cash tax savings', () => {
     const impact = estimateDeductionTaxImpact(
-      30_500,
+      HEAVY_VEHICLE_DEDUCTION,
       { filingStatus: 'mfj', state: 'CA' },
       378_191,
     );
 
-    expect(impact.annualDeduction).toBe(30_500);
-    expect(impact.estimatedCashSavings).toBe(10_157);
+    expect(impact.annualDeduction).toBe(HEAVY_VEHICLE_DEDUCTION);
+    expect(impact.estimatedCashSavings).toBe(10_656);
     expect(impact.estimatedCashSavings).toBeLessThan(impact.annualDeduction);
   });
 

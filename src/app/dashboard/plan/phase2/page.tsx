@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal } from '@/app/lib/deployableCapital';
@@ -447,7 +448,7 @@ function Phase2Inner() {
       const sb  = getBrowserSupabaseClient();
       const uid = s.user.id;
 
-      const [snapResult, { data: assetRows }, { data: constraintsRow }, { data: assumptionsRow }, { data: bonusPlanRow }, { data: bonusPaymentRows }] =
+      const [snapResult, { data: assetRows }, { data: constraintsRow }, { data: assumptionsRow }, { data: bonusPlanRow }, { data: bonusPaymentRows }, strategyEvaluationContext] =
         await Promise.all([
           getLatestSnapshotWithId(),
           sb.from('asset_preferences').select('asset_type').eq('user_id', uid).eq('selected', true),
@@ -455,6 +456,7 @@ function Phase2Inner() {
           sb.from('plan_assumptions').select('*').eq('user_id', uid).maybeSingle(),
           sb.from('bonus_plan').select('frequency, plan_amount, payment_month').eq('user_id', uid).maybeSingle(),
           sb.from('bonus_payments_actual').select('amount, net_amount, deployable_amount, date_paid').eq('user_id', uid),
+          loadTaxConstantsByYear(new Date().getFullYear()),
         ]);
 
       setBonusPlan(bonusPlanRow ? {
@@ -471,7 +473,7 @@ function Phase2Inner() {
 
       if (snapResult) {
         setSnapshot(snapResult.snapshot);
-        const actives = evaluateAll(snapResult.snapshot)
+        const actives = evaluateAll(snapResult.snapshot, strategyEvaluationContext)
           .filter(r => r.state === 'ACTIVE' && (r.estimatedAnnualValue ?? 0) > 0);
         setActiveStrategies(actives);
 

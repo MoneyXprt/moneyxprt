@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { generateBaselinePlan, generatePreviewPlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import { computeMonthlyDeployable } from '@/app/lib/deployableCapital';
 import type { GeneratedPlan, PlanInputs, IncomeAssumptions } from '@/app/lib/planGenerator';
 import type { BonusPlan } from '@/app/lib/deployableCapital';
-import type { FinancialSnapshot } from '@/app/lib/strategies/types';
+import type { FinancialSnapshot, StrategyEvaluationContext } from '@/app/lib/strategies/types';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { SimulatableDebt } from '@/app/lib/debtPayoff';
 import type { Session } from '@supabase/supabase-js';
@@ -127,6 +128,7 @@ export default function AssumptionsPage() {
   const [defaultPlan, setDefaultPlan]   = useState<GeneratedPlan | null>(null);
   const [financialPhase, setFinancialPhase] = useState<FinancialPhase | null>(null);
   const [debts, setDebts]               = useState<SimulatableDebt[]>([]);
+  const [strategyEvaluationContext, setStrategyEvaluationContext] = useState<StrategyEvaluationContext>({});
 
   // Section 1 — Income projections
   const [bizMonthly12, setBizMonthly12]         = useState(0);
@@ -221,7 +223,11 @@ export default function AssumptionsPage() {
       setFinancialPhase(fetchedPhase);
       setDebts(fetchedDebts);
 
-      const snapshotResult = await getLatestSnapshot();
+      const [snapshotResult, loadedStrategyEvaluationContext] = await Promise.all([
+        getLatestSnapshot(),
+        loadTaxConstantsByYear(new Date().getFullYear()),
+      ]);
+      setStrategyEvaluationContext(loadedStrategyEvaluationContext);
 
       if (!profileRow || !snapshotResult || !constraintsRow) {
         setLoading(false);
@@ -292,6 +298,7 @@ export default function AssumptionsPage() {
         freedomProfile: { visionText: p.visionText, targetFreeAge: p.targetFreeAge, freedomType: p.freedomType },
         freedomNumber: { monthlyTarget: p.monthlyTarget, portfolioTarget: p.portfolioTarget, breakdown: p.breakdown },
         snapshot: snapshotResult,
+        strategyEvaluationContext: loadedStrategyEvaluationContext,
         assetPreferences: prefs,
         constraints: { capitalPerYear: c.capitalPerYear, hoursPerWeek: c.hoursPerWeek, riskTolerance: c.riskTolerance, hardConstraints: c.hardConstraints },
         financialPhase: fetchedPhase,
@@ -357,6 +364,7 @@ export default function AssumptionsPage() {
         breakdown: profile.breakdown,
       },
       snapshot,
+      strategyEvaluationContext,
       assetPreferences: assetPrefs,
       constraints: {
         capitalPerYear:  capitalPerYearLever + freedCapitalPerYear,
@@ -385,7 +393,7 @@ export default function AssumptionsPage() {
     bonusGrowthPct, discretionaryCutLever,
     bizMonthly12, bizMonthly36, spouseMonthly12, spouseMonthly36,
     digitalMonthly12, digitalMonthly36,
-    financialPhase, debts,
+    financialPhase, debts, strategyEvaluationContext,
   ]);
 
   useEffect(() => {
@@ -463,6 +471,7 @@ export default function AssumptionsPage() {
           freedomProfile: { visionText: profile.visionText, targetFreeAge: profile.targetFreeAge, freedomType: profile.freedomType },
           freedomNumber: { monthlyTarget: newFreedomNumber, portfolioTarget: profile.portfolioTarget, breakdown: profile.breakdown },
           snapshot,
+          strategyEvaluationContext,
           assetPreferences: assetPrefs,
           constraints: {
             capitalPerYear:  constraints.capitalPerYear,
@@ -474,7 +483,7 @@ export default function AssumptionsPage() {
           debts,
         };
         const generated = generateBaselinePlan(inputs);
-        const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase);
+        const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase, strategyEvaluationContext);
         await saveActions(execActions, uid);
       } catch (err) {
         console.warn('Action regeneration on assumptions save failed:', err instanceof Error ? err.message : err);

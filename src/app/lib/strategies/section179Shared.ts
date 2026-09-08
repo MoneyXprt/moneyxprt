@@ -1,9 +1,4 @@
-import {
-  SECTION_179_HEAVY_VEHICLE_CAP_2026,
-  SECTION_179_OVERALL_CAP_2026,
-  SECTION_179_PHASE_OUT_THRESHOLD_2026,
-  TAX_YEAR,
-} from './taxConstants2026';
+import type { Section179TaxConstants } from './types';
 
 export interface Section179EquipmentAssetInput {
   description: string;
@@ -25,6 +20,7 @@ interface Section179AllocationInput {
   vehiclePurchasePrice: number;
   vehicleBusinessUsePercent: number;
   equipmentAssets: readonly Section179EquipmentAssetInput[];
+  taxConstants: Section179TaxConstants;
 }
 
 /** Returns the uncapped business-use basis for one non-vehicle equipment asset. */
@@ -33,16 +29,22 @@ export function getEquipmentRequestedDeduction(asset: Section179EquipmentAssetIn
 }
 
 /** Returns whether an asset was placed in service in the active tax year. */
-export function isSection179AssetInTaxYear(asset: Section179EquipmentAssetInput): boolean {
-  return new Date(asset.placedInServiceDate).getUTCFullYear() === TAX_YEAR;
+export function isSection179AssetInTaxYear(
+  asset: Section179EquipmentAssetInput,
+  taxYear: number,
+): boolean {
+  return new Date(asset.placedInServiceDate).getUTCFullYear() === taxYear;
 }
 
 /** Allocates the single annual Section 179 allowance proportionally across property types. */
 export function allocateSection179Deduction(input: Section179AllocationInput): Section179Allocation {
-  const qualifyingEquipmentAssets = input.equipmentAssets.filter(isSection179AssetInTaxYear);
+  const { taxConstants } = input;
+  const qualifyingEquipmentAssets = input.equipmentAssets.filter(
+    asset => isSection179AssetInTaxYear(asset, taxConstants.taxYear),
+  );
   const vehicleRequested = Math.min(
     input.vehiclePurchasePrice * (input.vehicleBusinessUsePercent / 100),
-    SECTION_179_HEAVY_VEHICLE_CAP_2026,
+    taxConstants.heavyVehicleCap,
   );
   const equipmentRequested = qualifyingEquipmentAssets.reduce(
     (total, asset) => total + getEquipmentRequestedDeduction(asset),
@@ -51,8 +53,10 @@ export function allocateSection179Deduction(input: Section179AllocationInput): S
   const requestedDeduction = vehicleRequested + equipmentRequested;
   const totalPropertyBasis =
     input.vehiclePurchasePrice * (input.vehicleBusinessUsePercent / 100) + equipmentRequested;
-  const phaseOutReduction = Math.max(0, totalPropertyBasis - SECTION_179_PHASE_OUT_THRESHOLD_2026);
-  const annualAllowance = Math.max(0, SECTION_179_OVERALL_CAP_2026 - phaseOutReduction);
+  const phaseOutReduction = Math.max(0, totalPropertyBasis - taxConstants.phaseOutThreshold);
+  const annualAllowance = totalPropertyBasis >= taxConstants.completePhaseOut
+    ? 0
+    : Math.max(0, taxConstants.maxDeduction - phaseOutReduction);
   const allowedDeduction = Math.min(requestedDeduction, annualAllowance);
   const vehicleDeduction = requestedDeduction > 0
     ? allowedDeduction * (vehicleRequested / requestedDeduction)

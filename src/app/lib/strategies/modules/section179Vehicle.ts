@@ -15,10 +15,9 @@
  * same year the deduction is claimed.
  */
 
-import type { Strategy, FinancialSnapshot, StrategyResult } from '../types';
+import type { Strategy, FinancialSnapshot, StrategyEvaluationContext, StrategyResult } from '../types';
 import {
   getTaxableIncome,
-  SECTION_179_HEAVY_VEHICLE_CAP_2026,
   SECTION_179_VEHICLE_BUSINESS_USE_THRESHOLD_PCT,
 } from '../taxConstants2026';
 import { estimateDeductionTaxImpact } from '../taxImpact';
@@ -27,19 +26,33 @@ import { allocateSection179Deduction } from '../section179Shared';
 const ID   = 'section-179-vehicle';
 const NAME = 'Section 179 Heavy Vehicle Deduction';
 
-/** IRC §179 SUV/heavy-vehicle deduction cap for 2026, and the business-use threshold. */
+/** Evaluates a heavy-vehicle deduction using the supplied, year-specific Section 179 constants. */
 export const section179Vehicle: Strategy = {
   id: ID,
   name: NAME,
   category: 'tax',
 
-  evaluate(s: FinancialSnapshot): StrategyResult {
+  evaluate(s: FinancialSnapshot, context?: StrategyEvaluationContext): StrategyResult {
     const base: Pick<StrategyResult, 'id' | 'name' | 'category' | 'valueType'> = {
       id: ID,
       name: NAME,
       category: 'tax',
       valueType: 'cash',
     };
+    const taxConstants = context?.section179TaxConstants;
+    if (!taxConstants) {
+      const unavailableReason = context?.section179TaxConstantsUnavailableReason === 'not-found'
+        ? 'no confirmed Section 179 tax constants are available'
+        : 'confirmed Section 179 tax constants could not be loaded';
+      return {
+        ...base,
+        state: 'VERIFY',
+        estimatedAnnualValue: 0,
+        reason: `Unavailable — ${unavailableReason} for ${new Date().getFullYear()}.`,
+        unlockCondition: 'Add a CPA-confirmed tax_constants_by_year record for this year.',
+        blockedBy: 'section179TaxConstants',
+      };
+    }
 
     // ── Gate 1: business entity ─────────────────────────────────────────────
     if (!s.hasBusinessEntity) {
@@ -110,6 +123,7 @@ export const section179Vehicle: Strategy = {
       vehiclePurchasePrice: s.vehiclePurchasePrice,
       vehicleBusinessUsePercent: s.vehicleBusinessUsePercent,
       equipmentAssets: s.section179EquipmentAssets ?? [],
+      taxConstants,
     }).vehicleDeduction;
     const taxImpact = estimateDeductionTaxImpact(deductibleAmount, s, getTaxableIncome(s));
 
@@ -122,8 +136,8 @@ export const section179Vehicle: Strategy = {
         `Your $${s.vehiclePurchasePrice.toLocaleString()} vehicle, used ` +
         `${s.vehicleBusinessUsePercent}% for business, qualifies for a §179 deduction of ` +
         `$${taxImpact.annualDeduction.toLocaleString()}` +
-        (s.vehiclePurchasePrice * (s.vehicleBusinessUsePercent / 100) >= SECTION_179_HEAVY_VEHICLE_CAP_2026
-          ? ` (subject to the $${SECTION_179_HEAVY_VEHICLE_CAP_2026.toLocaleString()} 2026 SUV/heavy-vehicle limit and the shared annual §179 allowance).`
+        (s.vehiclePurchasePrice * (s.vehicleBusinessUsePercent / 100) >= taxConstants.heavyVehicleCap
+          ? ` (subject to the $${taxConstants.heavyVehicleCap.toLocaleString()} ${taxConstants.taxYear} SUV/heavy-vehicle limit and the shared annual §179 allowance).`
           : '.') +
         ` At your estimated marginal rate, that is about $${taxImpact.estimatedCashSavings.toLocaleString()} in current-year income-tax savings.`,
       cautionNote:

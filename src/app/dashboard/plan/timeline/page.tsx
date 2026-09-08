@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { generateBaselinePlan, generatePreviewPlan } from '@/app/lib/planGenerator';
 import { calculateMilestones } from '@/app/lib/milestoneCalculator';
 import { FreedomTimeline } from '@/components/FreedomTimeline';
 import type { GeneratedPlan, IncomeAssumptions, PlanInputs } from '@/app/lib/planGenerator';
-import type { FinancialSnapshot } from '@/app/lib/strategies/types';
+import type { FinancialSnapshot, StrategyEvaluationContext } from '@/app/lib/strategies/types';
 import type { Milestone } from '@/app/lib/milestoneCalculator';
 import type { Session } from '@supabase/supabase-js';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
@@ -101,6 +102,7 @@ function buildInputs(
   levers: Levers,
   financialPhase: FinancialPhase | null,
   debts: SimulatableDebt[],
+  strategyEvaluationContext: StrategyEvaluationContext,
 ): PlanInputs {
   const prefs = levers.firstRentalYear === null
     ? assetPrefs.filter(p => p !== 'long_term_rental')
@@ -117,6 +119,7 @@ function buildInputs(
       breakdown:       {},
     },
     snapshot,
+    strategyEvaluationContext,
     assetPreferences: prefs,
     constraints: {
       capitalPerYear:  levers.monthlyCapital * 12,
@@ -419,6 +422,7 @@ export default function TimelinePage() {
   const [hasAssumptions, setHasAssumptions] = useState(false);
   const [financialPhase, setFinancialPhase] = useState<FinancialPhase | null>(null);
   const [debts, setDebts]               = useState<SimulatableDebt[]>([]);
+  const [strategyEvaluationContext, setStrategyEvaluationContext] = useState<StrategyEvaluationContext>({});
 
   // Live / recalculated
   const [milestones, setMilestones]     = useState<Milestone[]>([]);
@@ -493,7 +497,11 @@ export default function TimelinePage() {
           .eq('user_id', userId).eq('is_active', true),
       ]);
 
-      const snap = await getLatestSnapshot();
+      const [snap, loadedStrategyEvaluationContext] = await Promise.all([
+        getLatestSnapshot(),
+        loadTaxConstantsByYear(currentYear),
+      ]);
+      setStrategyEvaluationContext(loadedStrategyEvaluationContext);
 
       const fetchedPhase = (phaseRow?.phase as FinancialPhase | undefined) ?? null;
       const fetchedDebts: SimulatableDebt[] = (debtRows ?? []).map(d => ({
@@ -538,6 +546,7 @@ export default function TimelinePage() {
             breakdown:       {},
           },
           snapshot: snap,
+          strategyEvaluationContext: loadedStrategyEvaluationContext,
           assetPreferences: prefs,
           constraints: {
             capitalPerYear:  Number(cons.capital_per_year),
@@ -598,7 +607,7 @@ export default function TimelinePage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       try {
-        const inputs      = buildInputs(profile, snapshot, assetPrefs, constraints, levers, financialPhase, debts);
+        const inputs      = buildInputs(profile, snapshot, assetPrefs, constraints, levers, financialPhase, debts, strategyEvaluationContext);
         const incomeAsmp  = buildIncomeAssumptions(assumptions, levers, currentYear);
         const newPlan     = generatePreviewPlan(inputs, incomeAsmp);
         const completedTitles = execRows.filter(r => r.completed).map(r => r.title);

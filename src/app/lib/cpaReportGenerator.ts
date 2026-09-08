@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
 import { evaluateAll } from '@/app/lib/strategies/registry';
 import { getSnapshotForServer } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { computeGrossAnnualIncome } from '@/app/lib/deployableCapital';
 import { simulateDebtSnowballPayoff, type SimulatableDebt } from '@/app/lib/debtPayoff';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
@@ -163,7 +164,7 @@ export async function buildCpaReportData(
   const yearStart = `${currentYear}-01-01`;
   const yearEnd   = `${currentYear + 1}-01-01`;
 
-  const [snapshot, actionsResult, repsLogsResult, planRowResult, debtsResult, phaseResult] = await Promise.all([
+  const [snapshot, actionsResult, repsLogsResult, planRowResult, debtsResult, phaseResult, strategyEvaluationContext] = await Promise.all([
     getSnapshotForServer(userId, sb),
     sb
       .from('execution_actions')
@@ -197,11 +198,12 @@ export async function buildCpaReportData(
       .select('phase')
       .eq('user_id', userId)
       .maybeSingle(),
+    loadTaxConstantsByYear(currentYear, sb),
   ]);
 
   if (!snapshot) throw new Error('No financial snapshot found for this user.');
 
-  const allStrategies    = evaluateAll(snapshot);
+  const allStrategies    = evaluateAll(snapshot, strategyEvaluationContext);
   const completedActions = actionsResult.data ?? [];
   const repsLogs         = repsLogsResult.data ?? [];
 

@@ -9,7 +9,7 @@
 
 import { evaluateAll } from '@/app/lib/strategies';
 import { simulateDebtSnowballPayoff, computeDebtPayoffOrder, type SimulatableDebt, type DebtPayoffEvent } from '@/app/lib/debtPayoff';
-import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
+import type { FinancialSnapshot, StrategyEvaluationContext, StrategyResult } from '@/app/lib/strategies/types';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from '@/app/lib/financialPhase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { saveGeneratedPlan, type GeneratedPlanPromotionCaller } from './generatedPlansRepository';
@@ -28,6 +28,8 @@ export interface PlanInputs {
     breakdown: Record<string, number>;
   };
   snapshot: FinancialSnapshot;
+  /** Optional database-backed tax data; strategies without it retain their static behavior. */
+  strategyEvaluationContext?: StrategyEvaluationContext;
   assetPreferences: string[];   // array of asset_type keys
   constraints: {
     capitalPerYear: number;
@@ -232,7 +234,7 @@ function fmt(n: number): string {
 // ─── Core generator ───────────────────────────────────────────────────────────
 
 function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAssumptions): GeneratedPlan {
-  const { freedomNumber, snapshot, assetPreferences, constraints, financialPhase, debts } = inputs;
+  const { freedomNumber, snapshot, assetPreferences, constraints, financialPhase, debts, strategyEvaluationContext } = inputs;
   const { hardConstraints } = constraints;
   const currentYear = new Date().getFullYear();
 
@@ -241,7 +243,7 @@ function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAss
   const gapMonthly = Math.max(0, freedomNumber.monthlyTarget - currentPassiveMonthly);
 
   // ── Step 2: Deployable capital ────────────────────────────────────────────
-  const strategyResults = evaluateAll(snapshot);
+  const strategyResults = evaluateAll(snapshot, strategyEvaluationContext);
   const excludedIds = snapshot.excludedStrategyIds ?? [];
   const taxSavingsActive = strategyResults
     .filter(r => r.state === 'ACTIVE' && r.valueType === 'cash' && !excludedIds.includes(r.id))
@@ -293,7 +295,7 @@ function _generatePlanInternal(inputs: PlanInputs, incomeAssumptions?: IncomeAss
       rentalPropertyValue,
       repsQualified: repsViable ? true : (snapshot.repsQualified ?? undefined),
     };
-    const postRentalResults = evaluateAll(postRentalSnapshot);
+    const postRentalResults = evaluateAll(postRentalSnapshot, strategyEvaluationContext);
     // Sum value from strategies that are newly valuable (previously NOT_APPLICABLE or $0).
     rentalTaxUnlockAnnualValue = postRentalResults
       .filter(r => {

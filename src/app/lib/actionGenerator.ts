@@ -5,7 +5,7 @@
 
 import { computeRepsRelevance } from './planGenerator';
 import type { GeneratedPlan } from './planGenerator';
-import type { FinancialSnapshot } from './strategies/types';
+import type { FinancialSnapshot, StrategyEvaluationContext } from './strategies/types';
 import type { BonusPlan } from './deployableCapital';
 import { evaluateAll } from './strategies';
 import { MINI_EMERGENCY_FUND_TARGET, type FinancialPhase } from './financialPhase';
@@ -84,6 +84,7 @@ export function generateActions(
   repsHoursThisYear = 0,
   bonusPlan: BonusPlan | null = null,
   financialPhase?: FinancialPhase | null,
+  strategyEvaluationContext?: StrategyEvaluationContext,
 ): ExecutionAction[] {
   const now   = new Date();
   const month = now.getMonth() + 1; // 1-indexed
@@ -196,7 +197,9 @@ export function generateActions(
   // 1099 income present at plan-generation time but gone since). Re-evaluate every
   // strategy against the live snapshot — the same evaluateAll() the Audit page
   // uses — so a strategy that's since become LOCKED never gets an action.
-  const currentEligibility = new Map(evaluateAll(snapshot).map(r => [r.id, r.state]));
+  const currentEligibility = new Map(
+    evaluateAll(snapshot, strategyEvaluationContext).map(r => [r.id, r.state]),
+  );
 
   // One action per ACTIVE strategy worth > $500/yr
   const activeStrategies = plan.taxStrategyStack.strategies

@@ -16,6 +16,7 @@ import { getSnapshotForServer } from './snapshots';
 import type { FinancialPhase } from './financialPhase';
 import type { SimulatableDebt } from './debtPayoff';
 import type { BonusPlan } from './deployableCapital';
+import { loadTaxConstantsByYear } from './taxConstantsByYearRepository';
 
 export async function regeneratePlanAndActions(
   sb: SupabaseClient,
@@ -52,7 +53,10 @@ export async function regeneratePlanAndActions(
       .lt('date', yearEnd),
   ]);
 
-  const snapshot = await getSnapshotForServer(userId, sb);
+  const [snapshot, strategyEvaluationContext] = await Promise.all([
+    getSnapshotForServer(userId, sb),
+    loadTaxConstantsByYear(currentYear, sb),
+  ]);
   if (!profileRow || !snapshot || !constraintsRow) {
     throw new Error('Missing plan prerequisites (profile, snapshot, or constraints) for this account.');
   }
@@ -93,6 +97,7 @@ export async function regeneratePlanAndActions(
       },
     },
     snapshot,
+    strategyEvaluationContext,
     assetPreferences: (assetRows ?? []).map(r => r.asset_type as string),
     constraints: {
       capitalPerYear:  Number(constraintsRow.capital_per_year),
@@ -106,6 +111,6 @@ export async function regeneratePlanAndActions(
 
   const generated = generateBaselinePlan(inputs);
   await savePlan(generated, userId, sb, caller);
-  const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase);
+  const execActions = generateActions(generated, snapshot, repsHoursThisYear, bonusPlan, financialPhase, strategyEvaluationContext);
   await saveActions(execActions, userId, sb);
 }

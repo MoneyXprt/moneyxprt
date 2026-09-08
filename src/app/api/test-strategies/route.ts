@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { FinancialSnapshot } from '@/app/lib/strategies';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
+import { createServerSupabaseClient } from '@/app/utils/supabaseClient';
 
 const TEST_SNAPSHOT: FinancialSnapshot = {
   w2Income:             243_500,
@@ -81,11 +83,15 @@ const TEST_SNAPSHOT: FinancialSnapshot = {
   repsQualified:          undefined,
 };
 
-export function GET() {
+export async function GET() {
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  const results = evaluateAll(TEST_SNAPSHOT);
+  const strategyEvaluationContext = await loadTaxConstantsByYear(
+    new Date().getFullYear(),
+    createServerSupabaseClient(),
+  );
+  const results = evaluateAll(TEST_SNAPSHOT, strategyEvaluationContext);
   return NextResponse.json(
     { snapshot: TEST_SNAPSHOT, results },
     { headers: { 'Content-Type': 'application/json; charset=utf-8' } },

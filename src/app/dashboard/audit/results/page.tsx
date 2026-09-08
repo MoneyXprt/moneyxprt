@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
+import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
 import type { StrategyResult } from '@/app/lib/strategies';
 import type { Session } from '@supabase/supabase-js';
@@ -476,7 +477,10 @@ export default function AuditResultsPage() {
     setLoading(true);
     setError(null);
     try {
-      const snapshot = await getLatestSnapshot();
+      const [snapshot, strategyEvaluationContext] = await Promise.all([
+        getLatestSnapshot(),
+        loadTaxConstantsByYear(new Date().getFullYear()),
+      ]);
       if (!snapshot) {
         setHasSnapshot(false);
         setLoading(false);
@@ -492,7 +496,7 @@ export default function AuditResultsPage() {
         .maybeSingle();
       if (row?.snapshot_date) setSnapshotDate(row.snapshot_date as string);
 
-      setResults(evaluateAll(snapshot));
+      setResults(evaluateAll(snapshot, strategyEvaluationContext));
 
       // Debt interest — fetched fresh every load (never cached/stored), since balances
       // change as debts are paid down.

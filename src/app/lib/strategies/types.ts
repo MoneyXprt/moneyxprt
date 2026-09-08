@@ -2,6 +2,23 @@ import type { Section179EquipmentAssetInput } from './section179Shared';
 
 export type StrategyState = 'ACTIVE' | 'VERIFY' | 'LOCKED' | 'NOT_APPLICABLE';
 
+/** Immutable, year-specific Section 179 figures loaded before strategy evaluation. */
+export interface Section179TaxConstants {
+  taxYear: number;
+  heavyVehicleCap: number;
+  maxDeduction: number;
+  phaseOutThreshold: number;
+  completePhaseOut: number;
+}
+
+export type Section179TaxConstantsUnavailableReason = 'not-found' | 'load-failed' | 'timed-out';
+
+/** Optional runtime data needed only by strategies with database-backed tax figures. */
+export interface StrategyEvaluationContext {
+  section179TaxConstants?: Section179TaxConstants | null;
+  section179TaxConstantsUnavailableReason?: Section179TaxConstantsUnavailableReason;
+}
+
 export interface FinancialSnapshot {
   // ── Income ──────────────────────────────────────────────────────────────────
   w2Income: number;
@@ -127,5 +144,5 @@ export interface Strategy {
   id: string;
   name: string;
   category: StrategyResult['category'];
-  evaluate: (s: FinancialSnapshot) => StrategyResult;
+  evaluate: (s: FinancialSnapshot, context?: StrategyEvaluationContext) => StrategyResult;
 }
