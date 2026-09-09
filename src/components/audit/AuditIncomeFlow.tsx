@@ -9,13 +9,14 @@ type IncomeStep = 'salary' | 'bonus-question' | 'bonus-amount' | 'bonus-deferred
 
 interface PresenceAnswers { hasBonus: boolean; has1099: boolean; hasAllowance: boolean; hasRental: boolean; hasDividend: boolean; hasOther: boolean; }
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ALL_INCOME_STEPS: readonly IncomeStep[] = ['salary', 'bonus-question', 'bonus-amount', 'bonus-deferred-question', 'bonus-deferred-amount', 'bonus-frequency', 'bonus-plan-amount', 'bonus-payment-month', 'income1099-question', 'income1099-amount', 'allowance-question', 'allowance-amount', 'rental-question', 'rental-amount', 'dividend-question', 'dividend-amount', 'other-question', 'other-amount', 'spouse-question', 'spouse-type', 'spouse-w2', 'spouse-revenue', 'spouse-profit'];
 
 /** Runs the Income portion of Audit as local-only, branchable questions. */
 export function AuditIncomeFlow({ form, onChange, onComplete }: { form: IncomeFormState; onChange: (changes: Partial<IncomeFormState>) => void; onComplete: () => void }) {
   const [presence, setPresence] = useState<PresenceAnswers>({ hasBonus: Number(form.bonusIncome) > 0, has1099: Number(form.income1099) > 0, hasAllowance: Number(form.carAllowanceAnnual) > 0, hasRental: Number(form.monthlyRentalIncome) > 0, hasDividend: Number(form.monthlyDividendIncome) > 0, hasOther: Number(form.otherIncomeAnnual) > 0 });
   const [error, setError] = useState('');
   const steps = useMemo(() => getSteps(form, presence), [form, presence]);
-  const flow = useQuestionFlow(steps);
+  const flow = useQuestionFlow(steps, ALL_INCOME_STEPS.length);
   const next = (step: IncomeStep) => flow.goTo(step);
   const finish = () => onComplete();
   const automaticSteps: readonly IncomeStep[] = ['bonus-question', 'bonus-deferred-question', 'bonus-frequency', 'income1099-question', 'allowance-question', 'rental-question', 'dividend-question', 'other-question', 'spouse-question', 'spouse-type'];

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 /** Controls a locally held, branchable question sequence without persisting answers. */
-export function useQuestionFlow<TStep extends string>(steps: readonly TStep[]) {
+export function useQuestionFlow<TStep extends string>(steps: readonly TStep[], displayTotal = steps.length) {
   const [currentStep, setCurrentStep] = useState<TStep>(steps[0]);
   const [, setHistory] = useState<TStep[]>([]);
   const currentIndex = Math.max(0, steps.indexOf(currentStep));
@@ -9,7 +9,7 @@ export function useQuestionFlow<TStep extends string>(steps: readonly TStep[]) {
   return useMemo(() => ({
     currentStep,
     currentIndex,
-    totalSteps: steps.length,
+    totalSteps: displayTotal,
     goTo: (next: TStep) => {
       setHistory((previous) => [...previous, currentStep]);
       setCurrentStep(next);
@@ -21,5 +21,5 @@ export function useQuestionFlow<TStep extends string>(steps: readonly TStep[]) {
         return previous.slice(0, -1);
       });
     },
-  }), [currentIndex, currentStep, steps.length]);
+  }), [currentIndex, currentStep, displayTotal]);
 }
