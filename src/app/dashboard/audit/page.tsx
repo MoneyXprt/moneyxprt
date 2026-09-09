@@ -7,6 +7,8 @@ import { saveSnapshot, getLatestSnapshot } from '@/app/lib/snapshots';
 import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
 import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
+import { buildIncomeSnapshotFields, type IncomeFormState } from '@/app/lib/audit/incomeFlow';
+import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -17,14 +19,7 @@ import type { Session } from '@supabase/supabase-js';
 // here instead of the editable financial_snapshots fields.
 interface TrackedDebt { balance: number; rate: number; payment: number }
 
-interface FormState {
-  // S1 — Income
-  w2Income: string; bonusIncome: string; bonusDefers: boolean; bonusDeferred: string;
-  bonusFrequency: 'monthly' | 'quarterly' | 'annual' | ''; bonusPlanAmount: string; bonusPaymentMonth: string;
-  income1099: string; carAllowanceAnnual: string; otherIncomeAnnual: string;
-  monthlyRentalIncome: string; monthlyDividendIncome: string;
-  spouseWorks: boolean; spouseIncomeType: 'w2' | 'self_employment' | 'both' | '';
-  spouseW2Income: string; spouseBusinessRevenue: string; spouseBusinessNetProfit: string;
+interface FormState extends IncomeFormState {
   // S2 — Tax
   filingStatus: 'single' | 'mfj' | 'hoh'; state: string; currentTaxPaid: string;
   hasBusinessEntity: boolean; businessRevenue: string; primaryBusinessNetProfit: string;
@@ -582,22 +577,15 @@ function AuditPageInner() {
     try {
       const essential     = n(form.essentialMonthlySpend);
       const discretionary = n(form.discretionaryMonthlySpend);
-      const grossBonus    = n(form.bonusIncome);
-      const bonusDeferred = form.bonusDefers ? Math.min(n(form.bonusDeferred), grossBonus) : 0;
+      const incomeSnapshot = buildIncomeSnapshotFields(form);
+      const grossBonus    = incomeSnapshot.bonusIncome;
       // A spouse's separate business entity also satisfies IRC §280A(g) Augusta Rule
       // eligibility (and every other hasBusinessEntity-gated strategy) — it's a real
       // entity on the joint return, not specifically the user's own sole-proprietorship.
       const effectiveHasBusinessEntity = form.hasBusinessEntity || (form.spouseWorks && form.spouseHasSeparateBusiness);
 
       const snapshot: FinancialSnapshot = {
-        w2Income:           n(form.w2Income),
-        bonusIncome:        grossBonus,
-        bonusDeferred,
-        bonusTakenAsCash:   grossBonus - bonusDeferred,
-        income1099:         n(form.income1099),
-        carAllowanceAnnual: n(form.carAllowanceAnnual),
-        otherIncomeAnnual:  n(form.otherIncomeAnnual),
-        spouseWorks:        form.spouseWorks,
+        ...incomeSnapshot,
         filingStatus:       form.filingStatus === 'hoh' ? 'single' : form.filingStatus,
         state:              form.state,
         dependentsUnder18:  n(form.dependentsUnder18),
@@ -614,12 +602,6 @@ function AuditPageInner() {
         hasHeavyVehicle:                effectiveHasBusinessEntity ? form.hasHeavyVehicle : false,
         vehiclePurchasePrice:           effectiveHasBusinessEntity ? n(form.vehiclePurchasePrice) : 0,
         vehicleBusinessUsePercent:      effectiveHasBusinessEntity ? n(form.vehicleBusinessUsePercent) : 0,
-        spouseW2Income:  form.spouseWorks && (form.spouseIncomeType === 'w2' || form.spouseIncomeType === 'both')
-                           ? n(form.spouseW2Income) : 0,
-        spouseBusinessRevenue:  form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
-                                  ? n(form.spouseBusinessRevenue) : 0,
-        spouseBusinessNetProfit: form.spouseWorks && (form.spouseIncomeType === 'self_employment' || form.spouseIncomeType === 'both')
-                                   ? n(form.spouseBusinessNetProfit) : 0,
         spouseBusinessType:  form.spouseWorks && form.spouseHasSeparateBusiness ? form.spouseBusinessType : '',
         spouseHoursPerWeekInBusiness: form.spouseWorks ? n(form.spouseHoursPerWeekInBusiness) : 0,
         currentTaxPaid:      n(form.currentTaxPaid),
@@ -636,8 +618,6 @@ function AuditPageInner() {
         traditionalIraBalance: n(form.traditionalIraBalance),
         taxableBrokerageBalance: n(form.taxableBrokerageBalance),
         businessEquityValue:   form.hasBusinessEntity ? n(form.businessEquityValue) : 0,
-        monthlyRentalIncome:   n(form.monthlyRentalIncome),
-        monthlyDividendIncome: n(form.monthlyDividendIncome),
         essentialMonthlySpend:     essential,
         discretionaryMonthlySpend: discretionary,
         monthlySpend:              essential + discretionary,
@@ -880,6 +860,14 @@ function AuditPageInner() {
   );
   if (!session) return <AuthGate onSession={setSession} />;
 
+  if (section === 1) {
+    return <AuditIncomeFlow
+      form={form}
+      onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
+      onComplete={() => { setSaveError(null); setSection(2); }}
+    />;
+  }
+
   const isLast = section === SECTIONS.length;
   const totalMonthly = n(form.essentialMonthlySpend) + n(form.discretionaryMonthlySpend);
   const computedHomeEquity = Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance));
@@ -937,7 +925,7 @@ function AuditPageInner() {
 
           <div className="px-6 py-6 space-y-5">
 
-            {/* ── Section 1: Income ─────────────────────────────────── */}
+            {/* ── Section 1: Income (rendered by AuditIncomeFlow above) ─ */}
             {section === 1 && (<>
               <DollarInput label="W-2 base salary" hint="Gross annual salary before taxes."
                 value={form.w2Income} onChange={v => set('w2Income', v)} />
