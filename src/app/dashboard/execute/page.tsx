@@ -14,6 +14,8 @@ import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { Session } from '@supabase/supabase-js';
 import { LifeEventSuccessToast } from '@/components/LifeEventSuccessToast';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -803,6 +805,10 @@ export default function ExecutePage() {
                   <Link href="/dashboard/audit/results" className="ml-1 font-semibold text-sky-800 underline underline-offset-2">Review assumptions</Link>
                 </p>
               </div>
+            )}
+
+            {actions.some(action => action.strategy_id !== null && action.estimated_annual_value > 0) && (
+              <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
             )}
 
             {/* THIS WEEK */}

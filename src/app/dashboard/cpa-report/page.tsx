@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import type { Session } from '@supabase/supabase-js';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +197,8 @@ export default function CpaReportPage() {
             all strategies require professional review.
           </p>
         </div>
+
+        <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
 
         {/* Empty state */}
         {!hasStrategies && (

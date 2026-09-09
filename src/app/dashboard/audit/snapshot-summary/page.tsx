@@ -6,10 +6,12 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies';
 import { computeMonthlyTakeHome, computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal, computeGrossAnnualIncome } from '@/app/lib/deployableCapital';
 import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -289,6 +291,8 @@ function SnapshotSummaryInner() {
             )}
           </div>
         </div>
+
+        <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
 
         {/* ── Card 2: Financial Health ───────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

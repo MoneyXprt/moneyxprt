@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { formatCurrency, formatDate } from '@/app/lib/format';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import type { SpouseBusinessStrategy } from '@/app/lib/calculations/spouseBusiness';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 /** Ranked spouse-business recommendations and the single plan CTA. */
 export function SpouseBusinessResults({
@@ -31,6 +33,10 @@ export function SpouseBusinessResults({
           {strategies.map((strategy) => <StrategyCard key={strategy.id} strategy={strategy} />)}
         </div>
       )}
+
+      <div className="mt-4">
+        <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
+      </div>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/95 p-4 backdrop-blur">
         <div className="mx-auto max-w-lg">

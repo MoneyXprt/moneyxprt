@@ -4,6 +4,7 @@ import PDFDocument from 'pdfkit';
 import { buildCpaReportData, CATEGORY_TITLES } from '@/app/lib/cpaReportGenerator';
 import type { CpaReportData } from '@/app/lib/cpaReportGenerator';
 import { checkServerRateLimit } from '@/app/lib/api/rateLimitServer';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,11 +113,7 @@ function generatePDF(data: CpaReportData): Promise<Buffer> {
     doc.moveDown(1.2);
 
     // Disclaimer box
-    const disclaimerText =
-      'DISCLAIMER: This document summarizes tax strategies the taxpayer has identified and ' +
-      'self-reported as implemented or in progress. This is not tax advice. All strategies ' +
-      'should be reviewed and verified by a qualified tax professional before filing. ' +
-      'MoneyXprt is an educational tool and is not a substitute for professional tax preparation.';
+    const disclaimerText = TAX_DISCLAIMER_TEXT;
 
     doc.fontSize(7.5).font('Helvetica');
     const dH = doc.heightOfString(disclaimerText, { width: usableW - 24 });

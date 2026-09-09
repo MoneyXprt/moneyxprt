@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import { generateBaselinePlan, savePlan } from '@/app/lib/planGenerator';
 import { generateActions, saveActions } from '@/app/lib/actionGenerator';
 import type { GeneratedPlan, Phase, AssetRoadmapRow, PlanAction } from '@/app/lib/planGenerator';
@@ -13,6 +14,7 @@ import type { BonusPlan } from '@/app/lib/deployableCapital';
 import type { FinancialPhase } from '@/app/lib/financialPhase';
 import type { SimulatableDebt } from '@/app/lib/debtPayoff';
 import type { Session } from '@supabase/supabase-js';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1020,6 +1022,10 @@ export default function PlanResultsPage() {
             </div>
             );
           })()}
+
+          {plan.taxStrategyStack.strategies.length > 0 && (
+            <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
+          )}
 
           {/* ── Section 4: Asset roadmap ──────────────────────────────── */}
           {plan.assetRoadmap.length > 0 && (

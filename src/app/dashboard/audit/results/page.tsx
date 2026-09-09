@@ -6,8 +6,10 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshot } from '@/app/lib/snapshots';
 import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import type { StrategyResult } from '@/app/lib/strategies';
 import type { Session } from '@supabase/supabase-js';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -665,6 +667,8 @@ export default function AuditResultsPage() {
             >
               {locked.map(r => <LockedCard key={r.id} r={r} />)}
             </Section>
+
+            <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
 
             {/* CTA */}
             <div className="flex items-center justify-between pt-2 pb-4">

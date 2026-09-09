@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Tooltip } from '@/components/Tooltip';
 import { SomethingChangedCard } from '@/components/SomethingChangedCard';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import { formatCurrency as fmt } from '@/app/lib/format';
 import { calculateFreedomScore } from '@/app/lib/freedomScore';
 import type { FreedomScoreBreakdown } from '@/app/lib/freedomScore';
@@ -1063,7 +1065,10 @@ export default function DashboardHome() {
 
             {/* Tax strategy panel */}
             {plan.taxStrategyStack.strategies.length > 0 && (
-              <TaxStrategyPanel stack={plan.taxStrategyStack} />
+              <>
+                <TaxStrategyPanel stack={plan.taxStrategyStack} />
+                <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
+              </>
             )}
 
             {/* REPS tracker — hidden until REPS is actually relevant (rental owned or

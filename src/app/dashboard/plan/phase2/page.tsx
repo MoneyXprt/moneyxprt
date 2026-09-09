@@ -6,10 +6,12 @@ import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
 import { getLatestSnapshotWithId } from '@/app/lib/snapshots';
 import { loadTaxConstantsByYear } from '@/app/lib/taxConstantsByYearRepository';
 import { evaluateAll } from '@/app/lib/strategies';
+import { TAX_DISCLAIMER_TEXT } from '@/app/lib/legal/taxDisclaimer';
 import type { FinancialSnapshot, StrategyResult } from '@/app/lib/strategies/types';
 import { computeMonthlyDeployable, computeAnnualBonusNetEstimate, computeAnnualBonusNetEstimateSource, computeAnnualDeployableTotal } from '@/app/lib/deployableCapital';
 import type { BonusPlan, BonusPayment } from '@/app/lib/deployableCapital';
 import type { Session } from '@supabase/supabase-js';
+import { TaxDisclaimerBanner } from '@/components/TaxDisclaimerBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -961,6 +963,8 @@ function Phase2Inner() {
             You can always add them back later.
           </p>
         )}
+
+        <TaxDisclaimerBanner text={TAX_DISCLAIMER_TEXT} />
 
         <ContinueBtn onClick={() => advance()} disabled={activeStrategies.length > 0 && activeStrategies.every(s => excludedStrategyIds.has(s.id))} />
       </div>
