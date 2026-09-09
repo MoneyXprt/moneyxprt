@@ -225,7 +225,7 @@ function SnapshotSummaryInner() {
     : 'Bonus (estimated, net of withholding)';
   const deployableAnnualTotal  = computeAnnualDeployableTotal(s, bonusPlan, bonusPayments);
 
-  const nextUrl = '/dashboard/asset-preferences' + (freshParam ? '?fresh=true' : '');
+  const nextUrl = '/dashboard/plan/phase2' + (freshParam ? '?fresh=true' : '');
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -51,8 +51,7 @@ export default function PlanFlowController() {
       const snapshotDone = Array.isArray(snapRows) && snapRows.length > 0;
       if (!snapshotDone) { router.replace('/dashboard/audit'); return; }
 
-      // Phase 2 — Asset Preferences + Constraints must both exist.
-      // Both are saved together by /dashboard/plan/phase2.
+      // Phase 2 is complete only after it has saved asset preferences and constraints.
       const [{ data: assetRows }, { data: constraints }] = await Promise.all([
         sb.from('asset_preferences').select('id').eq('user_id', userId).limit(1),
         sb.from('user_constraints').select('id').eq('user_id', userId).maybeSingle(),

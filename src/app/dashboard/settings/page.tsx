@@ -482,6 +482,12 @@ export default function SettingsPage() {
             >
               Generate CPA year-end report (PDF)
             </Link>
+            <Link
+              href="/dashboard/asset-preferences"
+              className="flex min-h-11 w-full items-center justify-center rounded-xl border border-gray-200 px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            >
+              Edit asset preferences
+            </Link>
           </div>
         </Section>
 
