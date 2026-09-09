@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { LegalLinks } from '@/components/LegalLinks';
 
 export default function AskPage() {
   const [email, setEmail] = useState('');
@@ -69,6 +70,7 @@ export default function AskPage() {
           </>
         )}
       </div>
+      <div className="absolute bottom-4 left-0 right-0"><LegalLinks /></div>
     </main>
   );
 }

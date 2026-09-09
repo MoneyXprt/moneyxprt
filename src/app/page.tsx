@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getBrowserSupabaseClient } from '@/app/utils/supabaseClient';
+import { LegalLinks } from '@/components/LegalLinks';
 
 const painPoints = [
   'You save. But your money sits in a bank earning nothing while inflation eats it.',
@@ -105,6 +106,7 @@ export default function Home() {
           <p className="mt-6 text-lg text-[#d4a843] sm:text-xl">Join the waitlist. Free during private alpha.</p>
           <div className="mt-9"><EarlyAccessButton /></div>
           <p className="mt-5 text-sm leading-6 text-white/55">No credit card. No commitment.<br />Cancel anytime when we launch.</p>
+          <div className="mt-5"><LegalLinks /></div>
         </div>
       </section>
     </main>
