@@ -8,7 +8,9 @@ import { computeDebtPayoffOrder } from '@/app/lib/debtPayoff';
 import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import { buildIncomeSnapshotFields, type IncomeFormState } from '@/app/lib/audit/incomeFlow';
+import { buildTaxSituationSnapshotFields, type TaxSituationFormState } from '@/app/lib/audit/taxSituationFlow';
 import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
+import { AuditTaxSituationFlow } from '@/components/audit/AuditTaxSituationFlow';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -19,17 +21,7 @@ import type { Session } from '@supabase/supabase-js';
 // here instead of the editable financial_snapshots fields.
 interface TrackedDebt { balance: number; rate: number; payment: number }
 
-interface FormState extends IncomeFormState {
-  // S2 — Tax
-  filingStatus: 'single' | 'mfj' | 'hoh'; state: string; currentTaxPaid: string;
-  hasBusinessEntity: boolean; businessRevenue: string; primaryBusinessNetProfit: string;
-  primaryBusinessType: string; primaryHoursPerWeekInBusiness: string;
-  hasDedicatedHomeOffice: boolean; homeOfficeSquareFootage: string;
-  isNewBusiness: boolean; startupCostsIncurred: string;
-  hasHeavyVehicle: boolean; vehiclePurchasePrice: string; vehicleBusinessUsePercent: string;
-  spouseHasSeparateBusiness: boolean; spouseBusinessType: string;
-  hasHsaAvailable: boolean; employer401kAllowsAfterTax: boolean | undefined;
-  hasCpa: boolean | undefined; cpaProactive: boolean | undefined;
+interface FormState extends IncomeFormState, TaxSituationFormState {
   // S3 — Balance Sheet
   primaryResidenceValue: string; mortgageBalance: string;
   currentlyOwnsRental: boolean; rentalPropertyValue: string; rentalMortgageBalance: string;
@@ -579,35 +571,12 @@ function AuditPageInner() {
       const discretionary = n(form.discretionaryMonthlySpend);
       const incomeSnapshot = buildIncomeSnapshotFields(form);
       const grossBonus    = incomeSnapshot.bonusIncome;
-      // A spouse's separate business entity also satisfies IRC §280A(g) Augusta Rule
-      // eligibility (and every other hasBusinessEntity-gated strategy) — it's a real
-      // entity on the joint return, not specifically the user's own sole-proprietorship.
-      const effectiveHasBusinessEntity = form.hasBusinessEntity || (form.spouseWorks && form.spouseHasSeparateBusiness);
-
       const snapshot: FinancialSnapshot = {
         ...incomeSnapshot,
-        filingStatus:       form.filingStatus === 'hoh' ? 'single' : form.filingStatus,
-        state:              form.state,
+        ...buildTaxSituationSnapshotFields(form, { spouseWorks: form.spouseWorks }),
         dependentsUnder18:  n(form.dependentsUnder18),
         dependentAges:      form.dependentAges.trim(),
-        hasBusinessEntity:              effectiveHasBusinessEntity,
-        businessRevenue:                form.hasBusinessEntity ? n(form.businessRevenue) : 0,
-        primaryBusinessNetProfit:       form.hasBusinessEntity ? n(form.primaryBusinessNetProfit) : 0,
-        primaryBusinessType:            form.hasBusinessEntity ? form.primaryBusinessType : '',
-        primaryHoursPerWeekInBusiness:  form.hasBusinessEntity ? n(form.primaryHoursPerWeekInBusiness) : 0,
-        hasDedicatedHomeOffice:         effectiveHasBusinessEntity ? form.hasDedicatedHomeOffice : false,
-        homeOfficeSquareFootage:        effectiveHasBusinessEntity ? n(form.homeOfficeSquareFootage) : 0,
-        isNewBusiness:                  effectiveHasBusinessEntity ? form.isNewBusiness : false,
-        startupCostsIncurred:           effectiveHasBusinessEntity ? n(form.startupCostsIncurred) : 0,
-        hasHeavyVehicle:                effectiveHasBusinessEntity ? form.hasHeavyVehicle : false,
-        vehiclePurchasePrice:           effectiveHasBusinessEntity ? n(form.vehiclePurchasePrice) : 0,
-        vehicleBusinessUsePercent:      effectiveHasBusinessEntity ? n(form.vehicleBusinessUsePercent) : 0,
-        spouseBusinessType:  form.spouseWorks && form.spouseHasSeparateBusiness ? form.spouseBusinessType : '',
         spouseHoursPerWeekInBusiness: form.spouseWorks ? n(form.spouseHoursPerWeekInBusiness) : 0,
-        currentTaxPaid:      n(form.currentTaxPaid),
-        hasHsaAvailable:     form.hasHsaAvailable,
-        hasCpa:              form.hasCpa ?? false,
-        cpaProactive:        form.cpaProactive ?? false,
         primaryResidenceValue: n(form.primaryResidenceValue),
         mortgageBalance:       n(form.mortgageBalance),
         homeEquity:          Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance)),
@@ -652,7 +621,6 @@ function AuditPageInner() {
           ...(form.hasBusinessLoan ? [{ type: 'business', balance: n(form.businessLoanBalance), rate: n(form.businessLoanRate) / 100, payment: n(form.businessLoanPayment) }] : []),
           ...(form.hasOtherDebt ? [{ type: form.otherDebtLabel.trim() || 'other', balance: n(form.otherDebtBalance), rate: n(form.otherDebtRate) / 100, payment: n(form.otherDebtPayment) }] : []),
         ],
-        employer401kAllowsAfterTax: form.employer401kAllowsAfterTax,
         // Phase 2 fields — not captured in Phase 1, set to false/undefined
         consideringRealEstate: false,
         plannedPropertyValue:  undefined,
@@ -865,6 +833,16 @@ function AuditPageInner() {
       form={form}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => { setSaveError(null); setSection(2); }}
+    />;
+  }
+
+  if (section === 2) {
+    return <AuditTaxSituationFlow
+      form={form}
+      spouseWorks={form.spouseWorks}
+      spouseIncomeType={form.spouseIncomeType}
+      onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
+      onComplete={() => { setSaveError(null); setSection(3); }}
     />;
   }
 

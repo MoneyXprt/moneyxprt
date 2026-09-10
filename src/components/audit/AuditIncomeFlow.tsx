@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { clampDeferredBonus, parseIncomeAmount, type BonusFrequency, type IncomeFormState, type SpouseIncomeType } from '@/app/lib/audit/incomeFlow';
 import { useQuestionFlow } from '@/app/lib/useQuestionFlow';
-import { DollarAnswer, IncomeQuestion, YesNo } from '@/components/audit/IncomeQuestion';
+import { ChoiceList, DollarAnswer, IncomeQuestion, YesNo } from '@/components/audit/IncomeQuestion';
 
 type IncomeStep = 'salary' | 'bonus-question' | 'bonus-amount' | 'bonus-deferred-question' | 'bonus-deferred-amount' | 'bonus-frequency' | 'bonus-plan-amount' | 'bonus-payment-month' | 'income1099-question' | 'income1099-amount' | 'allowance-question' | 'allowance-amount' | 'rental-question' | 'rental-amount' | 'dividend-question' | 'dividend-amount' | 'other-question' | 'other-amount' | 'spouse-question' | 'spouse-type' | 'spouse-w2' | 'spouse-revenue' | 'spouse-profit';
 
@@ -53,11 +53,6 @@ export function AuditIncomeFlow({ form, onChange, onComplete }: { form: IncomeFo
     const amountStep = amountSteps[key];
     return question(title, explainer, <YesNo onYes={() => { setPresence((value) => ({ ...value, [key]: true })); next(amountStep); }} onNo={() => { setPresence((value) => ({ ...value, [key]: false })); onChange({ [field]: '' }); next(nextStep); }} />, finish);
   }
-}
-
-/** Renders a set of plain-language selection buttons. */
-function ChoiceList<T extends string>({ choices, value, onSelect }: { choices: readonly (readonly [T, string])[]; value: T; onSelect: (value: T) => void }) {
-  return <div className="space-y-3">{choices.map(([choice, label]) => <button key={choice} type="button" onClick={() => onSelect(choice)} className={`min-h-14 w-full rounded-xl border-2 px-4 text-left text-base font-semibold ${value === choice ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-gray-200 bg-white text-gray-700'}`}>{label}</button>)}</div>;
 }
 
 /** Builds the visible steps from the local yes/no answers. */
