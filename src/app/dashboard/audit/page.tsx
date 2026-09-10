@@ -9,8 +9,10 @@ import { syncFinancialPhase } from '@/app/lib/financialPhaseSync';
 import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import { buildIncomeSnapshotFields, type IncomeFormState } from '@/app/lib/audit/incomeFlow';
 import { buildTaxSituationSnapshotFields, type TaxSituationFormState } from '@/app/lib/audit/taxSituationFlow';
+import { buildBalanceSheetSnapshotFields, type BalanceSheetFormState } from '@/app/lib/audit/balanceSheetFlow';
 import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
 import { AuditTaxSituationFlow } from '@/components/audit/AuditTaxSituationFlow';
+import { AuditBalanceSheetFlow } from '@/components/audit/AuditBalanceSheetFlow';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -21,12 +23,7 @@ import type { Session } from '@supabase/supabase-js';
 // here instead of the editable financial_snapshots fields.
 interface TrackedDebt { balance: number; rate: number; payment: number }
 
-interface FormState extends IncomeFormState, TaxSituationFormState {
-  // S3 — Balance Sheet
-  primaryResidenceValue: string; mortgageBalance: string;
-  currentlyOwnsRental: boolean; rentalPropertyValue: string; rentalMortgageBalance: string;
-  retirementBalance: string; traditionalIraBalance: string;
-  taxableBrokerageBalance: string; businessEquityValue: string;
+interface FormState extends IncomeFormState, TaxSituationFormState, BalanceSheetFormState {
   // S4 — Liabilities
   hasCarLoan: boolean; hasStudentLoan: boolean; hasPersonalLoan: boolean;
   hasCreditCard: boolean; hasBusinessLoan: boolean; hasOtherDebt: boolean;
@@ -577,16 +574,11 @@ function AuditPageInner() {
         dependentsUnder18:  n(form.dependentsUnder18),
         dependentAges:      form.dependentAges.trim(),
         spouseHoursPerWeekInBusiness: form.spouseWorks ? n(form.spouseHoursPerWeekInBusiness) : 0,
-        primaryResidenceValue: n(form.primaryResidenceValue),
-        mortgageBalance:       n(form.mortgageBalance),
-        homeEquity:          Math.max(0, n(form.primaryResidenceValue) - n(form.mortgageBalance)),
-        currentlyOwnsRental: form.currentlyOwnsRental,
-        rentalPropertyValue: form.currentlyOwnsRental ? n(form.rentalPropertyValue) : 0,
-        rentalMortgageBalance: form.currentlyOwnsRental ? n(form.rentalMortgageBalance) : 0,
-        retirementBalance:   n(form.retirementBalance),
-        traditionalIraBalance: n(form.traditionalIraBalance),
-        taxableBrokerageBalance: n(form.taxableBrokerageBalance),
-        businessEquityValue:   form.hasBusinessEntity ? n(form.businessEquityValue) : 0,
+        ...buildBalanceSheetSnapshotFields(form, {
+          hasBusinessEntity: form.hasBusinessEntity,
+          spouseWorks: form.spouseWorks,
+          spouseHasSeparateBusiness: form.spouseHasSeparateBusiness,
+        }),
         essentialMonthlySpend:     essential,
         discretionaryMonthlySpend: discretionary,
         monthlySpend:              essential + discretionary,
@@ -843,6 +835,19 @@ function AuditPageInner() {
       spouseIncomeType={form.spouseIncomeType}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => { setSaveError(null); setSection(3); }}
+    />;
+  }
+
+  if (section === 3) {
+    return <AuditBalanceSheetFlow
+      form={form}
+      businessContext={{
+        hasBusinessEntity: form.hasBusinessEntity,
+        spouseWorks: form.spouseWorks,
+        spouseHasSeparateBusiness: form.spouseHasSeparateBusiness,
+      }}
+      onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
+      onComplete={() => { setSaveError(null); setSection(4); }}
     />;
   }
 
