@@ -10,6 +10,7 @@ import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import { buildIncomeSnapshotFields, type IncomeFormState } from '@/app/lib/audit/incomeFlow';
 import { buildTaxSituationSnapshotFields, type TaxSituationFormState } from '@/app/lib/audit/taxSituationFlow';
 import { buildBalanceSheetSnapshotFields, type BalanceSheetFormState } from '@/app/lib/audit/balanceSheetFlow';
+import { syncAuditDebtMetadata } from '@/app/lib/debtSyncHistoryRepository';
 import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
 import { AuditTaxSituationFlow } from '@/components/audit/AuditTaxSituationFlow';
 import { AuditBalanceSheetFlow } from '@/components/audit/AuditBalanceSheetFlow';
@@ -697,8 +698,8 @@ function AuditPageInner() {
   // fallback below). If a row already exists, only refresh interest_rate,
   // minimum_payment, and name — current_balance is owned by the debt-payment
   // tracking flow (Actuals) once a debt is in the tracker, and must never be
-  // silently overwritten here. debt_type has no unique DB constraint, so this is
-  // an application-level "find, then insert-or-update" rather than a real upsert.
+  // silently overwritten here. The database enforces one row per user and debt type;
+  // this lookup decides whether Audit should seed a new tracker record or sync metadata.
   // Only re-ranks payoff_order when a new debt was actually inserted this save —
   // pure updates to existing debts don't change balance ordering, so skipping the
   // re-rank avoids unnecessary writes on every plain save.
@@ -774,11 +775,15 @@ function AuditPageInner() {
       if (findError) { console.warn('debts sync lookup failed:', findError.message); continue; }
 
       if (existing) {
-        const { error: updateError } = await sb
-          .from('debts')
-          .update({ name: entry.name, interest_rate: entry.rate, minimum_payment: entry.payment })
-          .eq('id', existing.id);
-        if (updateError) console.warn('debts sync update failed:', updateError.message);
+        try {
+          await syncAuditDebtMetadata(existing.id, {
+            name: entry.name,
+            interestRate: entry.rate,
+            minimumPayment: entry.payment,
+          });
+        } catch (error) {
+          console.warn('debts metadata sync failed:', error instanceof Error ? error.message : error);
+        }
       } else {
         const { error: insertError } = await sb.from('debts').insert({
           user_id: userId, name: entry.name, debt_type: entry.debt_type,
