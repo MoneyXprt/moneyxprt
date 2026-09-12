@@ -20,6 +20,8 @@ export interface DebtRecord {
 export interface DebtCorrectionChanges {
   originalBalance: number;
   currentBalance: number;
+  interestRate: number;
+  minimumPayment: number;
   isActive: boolean;
 }
 
@@ -86,6 +88,12 @@ export function validateDebtCorrection(changes: DebtCorrectionChanges, reason: s
   if (changes.originalBalance < changes.currentBalance) {
     return 'Original balance must be at least the current balance.';
   }
+  if (!Number.isFinite(changes.interestRate) || changes.interestRate < 0) {
+    return 'Enter a valid interest rate.';
+  }
+  if (!Number.isFinite(changes.minimumPayment) || changes.minimumPayment < 0 || changes.minimumPayment > DEBT_CORRECTION_MAX_BALANCE) {
+    return 'Enter a valid minimum payment.';
+  }
   if (changes.isActive && changes.currentBalance === 0) {
     return 'An active debt must have a balance greater than $0.';
   }
@@ -108,6 +116,8 @@ export async function correctDebtRecord(
     target_debt_id: debtId,
     target_original_balance: changes.originalBalance,
     target_current_balance: changes.currentBalance,
+    target_interest_rate: changes.interestRate,
+    target_minimum_payment: changes.minimumPayment,
     target_is_active: changes.isActive,
     correction_reason: reason.trim(),
   });
