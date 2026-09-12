@@ -10,10 +10,12 @@ import { syncCapitalPerYear } from '@/app/lib/capitalPerYearSync';
 import { buildIncomeSnapshotFields, type IncomeFormState } from '@/app/lib/audit/incomeFlow';
 import { buildTaxSituationSnapshotFields, type TaxSituationFormState } from '@/app/lib/audit/taxSituationFlow';
 import { buildBalanceSheetSnapshotFields, type BalanceSheetFormState } from '@/app/lib/audit/balanceSheetFlow';
+import { buildLiabilitiesSnapshotFields, createEmptyLiabilitiesForm, type LiabilitiesFormState, type TrackedLiabilityDebt } from '@/app/lib/audit/liabilitiesFlow';
 import { syncAuditDebtMetadata } from '@/app/lib/debtSyncHistoryRepository';
 import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
 import { AuditTaxSituationFlow } from '@/components/audit/AuditTaxSituationFlow';
 import { AuditBalanceSheetFlow } from '@/components/audit/AuditBalanceSheetFlow';
+import { AuditLiabilitiesFlow } from '@/components/audit/AuditLiabilitiesFlow';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -22,9 +24,7 @@ import type { Session } from '@supabase/supabase-js';
 // Live snapshot of a debt already tracked in the `debts` table, keyed by debt_type.
 // Presence of an entry means Section 4 shows that debt type read-only, sourced from
 // here instead of the editable financial_snapshots fields.
-interface TrackedDebt { name: string; balance: number; rate: number; payment: number }
-
-interface FormState extends IncomeFormState, TaxSituationFormState, BalanceSheetFormState {
+interface FormState extends IncomeFormState, TaxSituationFormState, BalanceSheetFormState, LiabilitiesFormState {
   // S4 — Liabilities
   hasCarLoan: boolean; hasStudentLoan: boolean; hasPersonalLoan: boolean;
   hasCreditCard: boolean; hasBusinessLoan: boolean; hasOtherDebt: boolean;
@@ -67,17 +67,7 @@ const EMPTY: FormState = {
   primaryResidenceValue: '', mortgageBalance: '',
   currentlyOwnsRental: false, rentalPropertyValue: '', rentalMortgageBalance: '',
   retirementBalance: '', traditionalIraBalance: '', taxableBrokerageBalance: '', businessEquityValue: '',
-  hasCarLoan: false, hasStudentLoan: false, hasPersonalLoan: false,
-  hasCreditCard: false, hasBusinessLoan: false, hasOtherDebt: false,
-  carLoanBalance: '', carLoanRate: '', carLoanPayment: '',
-  studentLoanBalance: '', studentLoanRate: '', studentLoanPayment: '',
-  personalLoanBalance: '', personalLoanRate: '', personalLoanPayment: '',
-  creditCardBalance: '', creditCardRate: '', creditCardPayment: '',
-  businessLoanBalance: '', businessLoanRate: '', businessLoanPayment: '',
-  otherDebtLabel: '', otherDebtBalance: '', otherDebtRate: '', otherDebtPayment: '',
-  carLoanOriginalBalance: '', studentLoanOriginalBalance: '',
-  personalLoanOriginalBalance: '', creditCardOriginalBalance: '',
-  businessLoanOriginalBalance: '', otherDebtOriginalBalance: '',
+  ...createEmptyLiabilitiesForm(),
   essentialMonthlySpend: '', discretionaryMonthlySpend: '', emergencyFund: '',
   extraDebtPayments: '',
   childSupportMonthly: '', alimonyMonthly: '',
@@ -438,7 +428,7 @@ function AuditPageInner() {
   const [saving, setSaving]         = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [syncWarning, setSyncWarning] = useState(false);
-  const [trackedDebts, setTrackedDebts] = useState<Record<string, TrackedDebt>>({});
+  const [trackedDebts, setTrackedDebts] = useState<Record<string, TrackedLiabilityDebt>>({});
   const [paidOffDebtTypes, setPaidOffDebtTypes] = useState<Set<string>>(new Set());
 
   // ── Auth + pre-populate ──────────────────────────────────────────────────
@@ -486,7 +476,7 @@ function AuditPageInner() {
             .select('name, debt_type, current_balance, interest_rate, minimum_payment, is_active')
             .eq('user_id', s.user.id);
           if (debtRows && debtRows.length > 0) {
-            const map: Record<string, TrackedDebt> = {};
+            const map: Record<string, TrackedLiabilityDebt> = {};
             const paidOff = new Set<string>();
             for (const d of debtRows) {
               if (d.is_active) {
@@ -588,33 +578,7 @@ function AuditPageInner() {
         extraDebtPayments:     n(form.extraDebtPayments),
         childSupportMonthly:   n(form.childSupportMonthly),
         alimonyMonthly:        n(form.alimonyMonthly),
-        carLoanBalance:   form.hasCarLoan ? n(form.carLoanBalance) : 0,
-        carLoanRate:      form.hasCarLoan ? n(form.carLoanRate) : 0,
-        carLoanPayment:   form.hasCarLoan ? n(form.carLoanPayment) : 0,
-        studentLoanBalance: form.hasStudentLoan ? n(form.studentLoanBalance) : 0,
-        studentLoanRate:    form.hasStudentLoan ? n(form.studentLoanRate) : 0,
-        studentLoanPayment: form.hasStudentLoan ? n(form.studentLoanPayment) : 0,
-        personalLoanBalance: form.hasPersonalLoan ? n(form.personalLoanBalance) : 0,
-        personalLoanRate:    form.hasPersonalLoan ? n(form.personalLoanRate) : 0,
-        personalLoanPayment: form.hasPersonalLoan ? n(form.personalLoanPayment) : 0,
-        creditCardBalance: form.hasCreditCard ? n(form.creditCardBalance) : 0,
-        creditCardRate:    form.hasCreditCard ? n(form.creditCardRate) : 0,
-        creditCardPayment: form.hasCreditCard ? n(form.creditCardPayment) : 0,
-        businessLoanBalance: form.hasBusinessLoan ? n(form.businessLoanBalance) : 0,
-        businessLoanRate:    form.hasBusinessLoan ? n(form.businessLoanRate) : 0,
-        businessLoanPayment: form.hasBusinessLoan ? n(form.businessLoanPayment) : 0,
-        otherDebtLabel:   form.hasOtherDebt ? form.otherDebtLabel.trim() : '',
-        otherDebtBalance: form.hasOtherDebt ? n(form.otherDebtBalance) : 0,
-        otherDebtRate:    form.hasOtherDebt ? n(form.otherDebtRate) : 0,
-        otherDebtPayment: form.hasOtherDebt ? n(form.otherDebtPayment) : 0,
-        debts: [
-          ...(form.hasCarLoan ? [{ type: 'car', balance: n(form.carLoanBalance), rate: n(form.carLoanRate) / 100, payment: n(form.carLoanPayment) }] : []),
-          ...(form.hasStudentLoan ? [{ type: 'student', balance: n(form.studentLoanBalance), rate: n(form.studentLoanRate) / 100, payment: n(form.studentLoanPayment) }] : []),
-          ...(form.hasPersonalLoan ? [{ type: 'personal', balance: n(form.personalLoanBalance), rate: n(form.personalLoanRate) / 100, payment: n(form.personalLoanPayment) }] : []),
-          ...(form.hasCreditCard ? [{ type: 'creditCard', balance: n(form.creditCardBalance), rate: n(form.creditCardRate) / 100, payment: n(form.creditCardPayment) }] : []),
-          ...(form.hasBusinessLoan ? [{ type: 'business', balance: n(form.businessLoanBalance), rate: n(form.businessLoanRate) / 100, payment: n(form.businessLoanPayment) }] : []),
-          ...(form.hasOtherDebt ? [{ type: form.otherDebtLabel.trim() || 'other', balance: n(form.otherDebtBalance), rate: n(form.otherDebtRate) / 100, payment: n(form.otherDebtPayment) }] : []),
-        ],
+        ...buildLiabilitiesSnapshotFields(form),
         // Phase 2 fields — not captured in Phase 1, set to false/undefined
         consideringRealEstate: false,
         plannedPropertyValue:  undefined,
@@ -854,6 +818,16 @@ function AuditPageInner() {
       }}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => { setSaveError(null); setSection(4); }}
+    />;
+  }
+
+  if (section === 4) {
+    return <AuditLiabilitiesFlow
+      form={form}
+      trackedDebts={trackedDebts}
+      paidOffDebtTypes={paidOffDebtTypes}
+      onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
+      onComplete={() => { setSaveError(null); setSection(5); }}
     />;
   }
 
