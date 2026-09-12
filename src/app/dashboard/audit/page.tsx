@@ -22,7 +22,7 @@ import type { Session } from '@supabase/supabase-js';
 // Live snapshot of a debt already tracked in the `debts` table, keyed by debt_type.
 // Presence of an entry means Section 4 shows that debt type read-only, sourced from
 // here instead of the editable financial_snapshots fields.
-interface TrackedDebt { balance: number; rate: number; payment: number }
+interface TrackedDebt { name: string; balance: number; rate: number; payment: number }
 
 interface FormState extends IncomeFormState, TaxSituationFormState, BalanceSheetFormState {
   // S4 — Liabilities
@@ -483,7 +483,7 @@ function AuditPageInner() {
           // back over an edit made on the Debts page.
           const { data: debtRows } = await sb
             .from('debts')
-            .select('debt_type, current_balance, interest_rate, minimum_payment, is_active')
+            .select('name, debt_type, current_balance, interest_rate, minimum_payment, is_active')
             .eq('user_id', s.user.id);
           if (debtRows && debtRows.length > 0) {
             const map: Record<string, TrackedDebt> = {};
@@ -491,6 +491,7 @@ function AuditPageInner() {
             for (const d of debtRows) {
               if (d.is_active) {
                 map[d.debt_type] = {
+                  name: String(d.name),
                   balance: Number(d.current_balance),
                   rate: Number(d.interest_rate),
                   payment: Number(d.minimum_payment),
@@ -1372,15 +1373,16 @@ function AuditPageInner() {
                   {paidOffDebtTypes.has('other') ? (
                     <PaidOffNote />
                   ) : (<>
-                    <TextInput label="What is this debt for?"
-                      hint="E.g. home improvement, medical, pool loan — anything that doesn't fit the categories above."
-                      placeholder="Home improvement loan" value={form.otherDebtLabel} onChange={v => set('otherDebtLabel', v)} />
                     {trackedDebts.other ? (<>
+                      <p className="text-xs leading-relaxed text-gray-500">Tracked as &ldquo;{trackedDebts.other.name}&rdquo; — <a href="/dashboard/debts" className="font-medium text-emerald-600 hover:underline">edit in Debts →</a></p>
                       <ReadOnlyField label="Balance" value={`$${Math.round(trackedDebts.other.balance).toLocaleString()}`} />
                       <ReadOnlyField label="Interest rate" value={`${trackedDebts.other.rate.toFixed(2)}% APR`} />
                       <ReadOnlyField label="Minimum monthly payment" value={`$${Math.round(trackedDebts.other.payment).toLocaleString()}`} />
                       <TrackedInDebtsNote />
                     </>) : (<>
+                      <TextInput label="What is this debt for?"
+                        hint="E.g. home improvement, medical, pool loan — anything that doesn't fit the categories above."
+                        placeholder="Home improvement loan" value={form.otherDebtLabel} onChange={v => set('otherDebtLabel', v)} />
                       <DollarInput label="Balance" value={form.otherDebtBalance} onChange={v => set('otherDebtBalance', v)} />
                       <SuffixInput label="Interest rate" suffix="% APR" value={form.otherDebtRate} onChange={v => set('otherDebtRate', v)} placeholder="8.0" />
                       <DollarInput label="Minimum monthly payment" value={form.otherDebtPayment} onChange={v => set('otherDebtPayment', v)} />
