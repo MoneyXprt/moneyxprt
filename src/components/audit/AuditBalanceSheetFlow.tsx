@@ -9,13 +9,13 @@ type BalanceStep = 'home-value' | 'mortgage-balance' | 'rental-question' | 'rent
 const ALL_BALANCE_STEPS: readonly BalanceStep[] = ['home-value', 'mortgage-balance', 'rental-question', 'rental-value', 'rental-mortgage', 'retirement', 'traditional-ira', 'brokerage', 'business-equity'];
 
 /** Runs Balance Sheet as a local-only, branchable sequence of questions. */
-export function AuditBalanceSheetFlow({ form, businessContext, onChange, onComplete }: { form: BalanceSheetFormState; businessContext: EffectiveBusinessContext; onChange: (changes: Partial<BalanceSheetFormState>) => void; onComplete: () => void }) {
+export function AuditBalanceSheetFlow({ form, businessContext, onChange, onComplete, saveError }: { form: BalanceSheetFormState; businessContext: EffectiveBusinessContext; onChange: (changes: Partial<BalanceSheetFormState>) => void; onComplete: () => void; saveError?: string | null }) {
   const effectiveBusiness = hasEffectiveBusinessEntity(businessContext);
   const steps = useMemo(() => getBalanceSteps(form.currentlyOwnsRental, effectiveBusiness), [form.currentlyOwnsRental, effectiveBusiness]);
   const flow = useQuestionFlow(steps, ALL_BALANCE_STEPS.length);
   const next = (step: BalanceStep) => flow.goTo(step);
   const equity = calculateHomeEquity(form.primaryResidenceValue, form.mortgageBalance);
-  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, showNext = true, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} showNext={showNext} nextLabel={label}>{content}</IncomeQuestion>;
+  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, showNext = true, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} showNext={showNext} nextLabel={label}>{content}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
 
   switch (flow.currentStep) {
     case 'home-value': return question("What's your home worth, roughly?", "A rough estimate is fine — check a site like Zillow or Redfin if you're not sure.", <DollarAnswer value={form.primaryResidenceValue} onChange={(primaryResidenceValue) => onChange({ primaryResidenceValue })} />, () => next('mortgage-balance'));

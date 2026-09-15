@@ -12,7 +12,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const ALL_INCOME_STEPS: readonly IncomeStep[] = ['salary', 'bonus-question', 'bonus-amount', 'bonus-deferred-question', 'bonus-deferred-amount', 'bonus-frequency', 'bonus-plan-amount', 'bonus-payment-month', 'income1099-question', 'income1099-amount', 'allowance-question', 'allowance-amount', 'rental-question', 'rental-amount', 'dividend-question', 'dividend-amount', 'other-question', 'other-amount', 'spouse-question', 'spouse-type', 'spouse-w2', 'spouse-revenue', 'spouse-profit'];
 
 /** Runs the Income portion of Audit as local-only, branchable questions. */
-export function AuditIncomeFlow({ form, onChange, onComplete }: { form: IncomeFormState; onChange: (changes: Partial<IncomeFormState>) => void; onComplete: () => void }) {
+export function AuditIncomeFlow({ form, onChange, onComplete, saveError }: { form: IncomeFormState; onChange: (changes: Partial<IncomeFormState>) => void; onComplete: () => void; saveError?: string | null }) {
   const [presence, setPresence] = useState<PresenceAnswers>({ hasBonus: Number(form.bonusIncome) > 0, has1099: Number(form.income1099) > 0, hasAllowance: Number(form.carAllowanceAnnual) > 0, hasRental: Number(form.monthlyRentalIncome) > 0, hasDividend: Number(form.monthlyDividendIncome) > 0, hasOther: Number(form.otherIncomeAnnual) > 0 });
   const [error, setError] = useState('');
   const steps = useMemo(() => getSteps(form, presence), [form, presence]);
@@ -20,7 +20,7 @@ export function AuditIncomeFlow({ form, onChange, onComplete }: { form: IncomeFo
   const next = (step: IncomeStep) => flow.goTo(step);
   const finish = () => onComplete();
   const automaticSteps: readonly IncomeStep[] = ['bonus-question', 'bonus-deferred-question', 'bonus-frequency', 'income1099-question', 'allowance-question', 'rental-question', 'dividend-question', 'other-question', 'spouse-question', 'spouse-type'];
-  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} nextLabel={label} showNext={!automaticSteps.includes(flow.currentStep)}>{content}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}</IncomeQuestion>;
+  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} nextLabel={label} showNext={!automaticSteps.includes(flow.currentStep)}>{content}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
 
   switch (flow.currentStep) {
     case 'salary': return question("What's your base salary?", 'Your gross salary before taxes, from your W-2.', <DollarAnswer value={form.w2Income} onChange={(w2Income) => { setError(''); onChange({ w2Income }); }} />, () => next('bonus-question'));
