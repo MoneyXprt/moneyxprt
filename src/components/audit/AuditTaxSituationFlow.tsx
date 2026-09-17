@@ -18,7 +18,7 @@ export function AuditTaxSituationFlow({ form, spouseWorks, spouseIncomeType, onC
   const steps = useMemo(() => getTaxSteps(form, spouseCanHaveBusiness, spouseWorks), [form, spouseCanHaveBusiness, spouseWorks]);
   const flow = useQuestionFlow(steps, ALL_TAX_STEPS.length);
   const next = (step: TaxStep) => flow.goTo(step);
-  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, showNext = true, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} showNext={showNext} nextLabel={label}>{content}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
+  const question = (title: string, explainer: string | undefined, content: React.ReactNode, onNext: () => void, showNext = true, label?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={onNext} showNext={showNext} nextLabel={label} sectionName="Tax Situation" sectionIndex={2}>{content}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
 
   switch (flow.currentStep) {
     case 'filing-status': return question('How do you file your taxes?', undefined, <ChoiceList choices={[['mfj', 'Married, filing jointly'], ['single', 'Single'], ['hoh', 'Head of household']] as const} value={form.filingStatus} onSelect={(filingStatus) => { onChange({ filingStatus }); next('state'); }} />, onComplete, false);

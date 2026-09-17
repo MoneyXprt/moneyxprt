@@ -10,7 +10,7 @@ export function AuditLiabilitiesFlow({ form, trackedDebts, paidOffDebtTypes, onC
   const steps = useMemo(() => getLiabilitySteps(form, trackedDebts, paidOffDebtTypes), [form, trackedDebts, paidOffDebtTypes]);
   const flow = useQuestionFlow(steps, LIABILITY_MAX_STEPS);
   const advance = () => { const next = steps[flow.currentIndex + 1]; if (next) flow.goTo(next); else onComplete(); };
-  const question = (title: string, explainer: string | undefined, content: React.ReactNode, nextLabel?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={advance} nextLabel={nextLabel}>{content}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
+  const question = (title: string, explainer: string | undefined, content: React.ReactNode, nextLabel?: string) => <IncomeQuestion title={title} explainer={explainer} step={flow.currentIndex + 1} totalSteps={flow.totalSteps} onBack={flow.back} onNext={advance} nextLabel={nextLabel} sectionName="Liabilities" sectionIndex={4}>{content}{saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}</IncomeQuestion>;
   const debt = LIABILITY_DEBT_DEFINITIONS.find((definition) => flow.currentStep.startsWith(`${definition.type}-`));
 
   if (flow.currentStep === 'debt-types') return question('Which debts do you have right now?', undefined, <DebtTypeSelector form={form} onChange={onChange} />, 'Continue →');

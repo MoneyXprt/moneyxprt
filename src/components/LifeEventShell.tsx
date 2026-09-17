@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { AuditSectionProgress } from '@/components/audit/AuditSectionProgress';
 
 /**
  * Full-screen chrome shared by every Life Events screen (selection + all guided
@@ -17,17 +18,23 @@ import type { ReactNode } from 'react';
  * @param totalSteps  Total steps in the flow. Omit on non-wizard screens.
  * @param onBack      Custom back handler (e.g. go to previous wizard step).
  *                    Defaults to browser back.
+ * @param sectionName Current Audit section name when this shell hosts an Audit flow.
+ * @param sectionIndex One-indexed Audit section number when this shell hosts an Audit flow.
  */
 export function LifeEventShell({
   children,
   step,
   totalSteps,
   onBack,
+  sectionName,
+  sectionIndex,
 }: {
   children: ReactNode;
   step?: number;
   totalSteps?: number;
   onBack?: () => void;
+  sectionName?: string;
+  sectionIndex?: number;
 }) {
   const router = useRouter();
   const showProgress = typeof step === 'number' && typeof totalSteps === 'number';
@@ -35,7 +42,7 @@ export function LifeEventShell({
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
+        <div className="mx-auto flex min-h-14 max-w-lg items-center gap-3 px-4 py-2">
           <button
             type="button"
             onClick={() => (onBack ? onBack() : router.back())}
@@ -47,21 +54,17 @@ export function LifeEventShell({
             </svg>
           </button>
 
-          {showProgress && (
-            <div className="flex items-center gap-2.5 flex-1">
-              <span className="text-xs font-semibold text-gray-500 tabular-nums">
-                Step {step} of {totalSteps}
-              </span>
-              <div className="flex items-center gap-1.5" aria-hidden="true">
-                {Array.from({ length: totalSteps! }, (_, i) => (
-                  <span
-                    key={i}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i < step! ? 'w-5 bg-emerald-500' : 'w-1.5 bg-gray-200'
-                    }`}
-                  />
-                ))}
-              </div>
+          {(sectionName || showProgress) && (
+            <div className="min-w-0 flex-1">
+              {sectionName && sectionIndex && <AuditSectionProgress name={sectionName} index={sectionIndex} />}
+              {showProgress && <div className="mt-0.5 flex items-center gap-2.5">
+                <span className="text-xs font-semibold text-gray-500 tabular-nums">Step {step} of {totalSteps}</span>
+                <div className="flex items-center gap-1.5" aria-hidden="true">
+                  {Array.from({ length: totalSteps! }, (_, i) => (
+                    <span key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i < step! ? 'w-5 bg-emerald-500' : 'w-1.5 bg-gray-200'}`} />
+                  ))}
+                </div>
+              </div>}
             </div>
           )}
         </div>

@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { LifeEventShell } from '@/components/LifeEventShell';
 
 /** Renders the shared one-question Audit screen with standard navigation. */
-export function IncomeQuestion({ title, explainer, step, totalSteps, onBack, onNext, nextLabel = 'Next →', showNext = true, children }: {
-  title: string; explainer?: string; step: number; totalSteps: number; onBack: () => void; onNext: () => void; nextLabel?: string; showNext?: boolean; children: ReactNode;
+export function IncomeQuestion({ title, explainer, step, totalSteps, onBack, onNext, nextLabel = 'Next →', showNext = true, sectionName, sectionIndex, children }: {
+  title: string; explainer?: string; step: number; totalSteps: number; onBack: () => void; onNext: () => void; nextLabel?: string; showNext?: boolean; sectionName?: string; sectionIndex?: number; children: ReactNode;
 }) {
-  return <LifeEventShell step={step} totalSteps={totalSteps} onBack={onBack}><div className="flex min-h-[calc(100vh-11rem)] flex-col"><div><h1 className="text-2xl font-bold leading-tight text-gray-900">{title}</h1>{explainer && <p className="mt-3 text-base leading-relaxed text-gray-500">{explainer}</p>}</div><div className="mt-8">{children}</div>{showNext && <button type="button" onClick={onNext} className="mt-auto min-h-11 w-full rounded-xl bg-emerald-600 px-5 text-base font-bold text-white transition hover:bg-emerald-700">{nextLabel}</button>}</div></LifeEventShell>;
+  return <LifeEventShell step={step} totalSteps={totalSteps} onBack={onBack} sectionName={sectionName} sectionIndex={sectionIndex}><div className="flex min-h-[calc(100vh-11rem)] flex-col"><div><h1 className="text-2xl font-bold leading-tight text-gray-900">{title}</h1>{explainer && <p className="mt-3 text-base leading-relaxed text-gray-500">{explainer}</p>}</div><div className="mt-8">{children}</div>{showNext && <button type="button" onClick={onNext} className="mt-auto min-h-11 w-full rounded-xl bg-emerald-600 px-5 text-base font-bold text-white transition hover:bg-emerald-700">{nextLabel}</button>}</div></LifeEventShell>;
 }
 
 /** Renders a plain-language yes/no choice with 44px minimum targets. */

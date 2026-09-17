@@ -16,6 +16,7 @@ import { AuditIncomeFlow } from '@/components/audit/AuditIncomeFlow';
 import { AuditTaxSituationFlow } from '@/components/audit/AuditTaxSituationFlow';
 import { AuditBalanceSheetFlow } from '@/components/audit/AuditBalanceSheetFlow';
 import { AuditLiabilitiesFlow } from '@/components/audit/AuditLiabilitiesFlow';
+import { AuditSectionProgress } from '@/components/audit/AuditSectionProgress';
 import type { FinancialSnapshot } from '@/app/lib/strategies/types';
 import type { Session } from '@supabase/supabase-js';
 
@@ -894,9 +895,7 @@ function AuditPageInner() {
 
         {/* Progress label */}
         <div className="mb-4 flex items-center justify-between">
-          <span className="text-xs font-semibold text-emerald-600">
-            Section {section} of {SECTIONS.length} — {SECTIONS[section - 1].label}
-          </span>
+          <AuditSectionProgress name={SECTIONS[section - 1].label} index={section} />
           <span className="text-xs text-gray-400">{Math.round((section / SECTIONS.length) * 100)}%</span>
         </div>
 
