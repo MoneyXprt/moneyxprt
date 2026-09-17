@@ -830,6 +830,7 @@ function AuditPageInner() {
       spouseWorks={form.spouseWorks}
       spouseIncomeType={form.spouseIncomeType}
       saveError={saveError}
+      mode={mode}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => completeSection(3)}
     />;
@@ -844,6 +845,7 @@ function AuditPageInner() {
         spouseHasSeparateBusiness: form.spouseHasSeparateBusiness,
       }}
       saveError={saveError}
+      mode={mode}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => completeSection(4)}
     />;
