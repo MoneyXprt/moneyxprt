@@ -818,6 +818,7 @@ function AuditPageInner() {
     return <AuditIncomeFlow
       form={form}
       saveError={saveError}
+      mode={mode}
       onChange={(changes) => setForm((previous) => ({ ...previous, ...changes }))}
       onComplete={() => completeSection(2)}
     />;

@@ -12,7 +12,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const ALL_INCOME_STEPS: readonly IncomeStep[] = ['salary', 'bonus-question', 'bonus-amount', 'bonus-deferred-question', 'bonus-deferred-amount', 'bonus-frequency', 'bonus-plan-amount', 'bonus-payment-month', 'income1099-question', 'income1099-amount', 'allowance-question', 'allowance-amount', 'rental-question', 'rental-amount', 'dividend-question', 'dividend-amount', 'other-question', 'other-amount', 'spouse-question', 'spouse-type', 'spouse-w2', 'spouse-revenue', 'spouse-profit'];
 
 /** Runs the Income portion of Audit as local-only, branchable questions. */
-export function AuditIncomeFlow({ form, onChange, onComplete, saveError }: { form: IncomeFormState; onChange: (changes: Partial<IncomeFormState>) => void; onComplete: () => void; saveError?: string | null }) {
+export function AuditIncomeFlow({ form, onChange, onComplete, saveError, mode }: { form: IncomeFormState; onChange: (changes: Partial<IncomeFormState>) => void; onComplete: () => void; saveError?: string | null; mode?: 'edit' | 'onboarding' }) {
   const [presence, setPresence] = useState<PresenceAnswers>({ hasBonus: Number(form.bonusIncome) > 0, has1099: Number(form.income1099) > 0, hasAllowance: Number(form.carAllowanceAnnual) > 0, hasRental: Number(form.monthlyRentalIncome) > 0, hasDividend: Number(form.monthlyDividendIncome) > 0, hasOther: Number(form.otherIncomeAnnual) > 0 });
   const [error, setError] = useState('');
   const steps = useMemo(() => getSteps(form, presence), [form, presence]);
@@ -45,7 +45,7 @@ export function AuditIncomeFlow({ form, onChange, onComplete, saveError }: { for
     case 'spouse-type': return question('Is that from a job, their own business, or both?', undefined, <ChoiceList<SpouseIncomeType> choices={[['w2', 'A job'], ['self_employment', 'Their own business'], ['both', 'Both']]} value={form.spouseIncomeType} onSelect={(spouseIncomeType) => { onChange({ spouseIncomeType }); next(spouseIncomeType === 'w2' || spouseIncomeType === 'both' ? 'spouse-w2' : 'spouse-revenue'); }} />, finish);
     case 'spouse-w2': return question("What's their annual income from their job?", undefined, <DollarAnswer value={form.spouseW2Income} onChange={(spouseW2Income) => onChange({ spouseW2Income })} />, () => form.spouseIncomeType === 'both' ? next('spouse-revenue') : finish());
     case 'spouse-revenue': return question('What is their business gross revenue?', 'Total revenue before expenses.', <DollarAnswer value={form.spouseBusinessRevenue} onChange={(spouseBusinessRevenue) => onChange({ spouseBusinessRevenue })} />, () => next('spouse-profit'));
-    case 'spouse-profit': return question('What is their business net profit?', 'After all business expenses — this is what gets taxed.', <DollarAnswer value={form.spouseBusinessNetProfit} onChange={(spouseBusinessNetProfit) => onChange({ spouseBusinessNetProfit })} />, finish, 'Continue to tax situation →');
+    case 'spouse-profit': return question('What is their business net profit?', 'After all business expenses — this is what gets taxed.', <DollarAnswer value={form.spouseBusinessNetProfit} onChange={(spouseBusinessNetProfit) => onChange({ spouseBusinessNetProfit })} />, finish, mode === 'edit' ? 'Save and return to Review →' : 'Continue to tax situation →');
   }
 
   function incomeYesNo(title: string, explainer: string, key: keyof PresenceAnswers, field: keyof IncomeFormState, nextStep: IncomeStep) {
