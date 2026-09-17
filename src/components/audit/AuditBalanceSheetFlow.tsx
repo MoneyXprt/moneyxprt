@@ -9,7 +9,7 @@ type BalanceStep = 'home-value' | 'mortgage-balance' | 'rental-question' | 'rent
 const ALL_BALANCE_STEPS: readonly BalanceStep[] = ['home-value', 'mortgage-balance', 'rental-question', 'rental-value', 'rental-mortgage', 'retirement', 'traditional-ira', 'brokerage', 'business-equity'];
 
 /** Runs Balance Sheet as a local-only, branchable sequence of questions. */
-export function AuditBalanceSheetFlow({ form, businessContext, onChange, onComplete, saveError }: { form: BalanceSheetFormState; businessContext: EffectiveBusinessContext; onChange: (changes: Partial<BalanceSheetFormState>) => void; onComplete: () => void; saveError?: string | null }) {
+export function AuditBalanceSheetFlow({ form, businessContext, onChange, onComplete, saveError, mode }: { form: BalanceSheetFormState; businessContext: EffectiveBusinessContext; onChange: (changes: Partial<BalanceSheetFormState>) => void; onComplete: () => void; saveError?: string | null; mode?: 'edit' | 'onboarding' }) {
   const effectiveBusiness = hasEffectiveBusinessEntity(businessContext);
   const steps = useMemo(() => getBalanceSteps(form.currentlyOwnsRental, effectiveBusiness), [form.currentlyOwnsRental, effectiveBusiness]);
   const flow = useQuestionFlow(steps, ALL_BALANCE_STEPS.length);
@@ -26,7 +26,7 @@ export function AuditBalanceSheetFlow({ form, businessContext, onChange, onCompl
     case 'retirement': return question('How much do you have in retirement accounts — 401(k)s and IRAs combined?', 'Add up the balances across all your retirement accounts.', <DollarAnswer value={form.retirementBalance} onChange={(retirementBalance) => onChange({ retirementBalance })} />, () => next('traditional-ira'));
     case 'traditional-ira': return question('Of that, how much is in a Traditional IRA specifically?', "This matters for a strategy called the backdoor Roth — if you're not sure, it's fine to estimate or leave at zero.", <DollarAnswer value={form.traditionalIraBalance} onChange={(traditionalIraBalance) => onChange({ traditionalIraBalance })} />, () => next('brokerage'));
     case 'brokerage': return question('How much do you have in a regular investment account — not retirement?', 'A taxable brokerage account, not a 401(k) or IRA.', <DollarAnswer value={form.taxableBrokerageBalance} onChange={(taxableBrokerageBalance) => onChange({ taxableBrokerageBalance })} />, () => effectiveBusiness ? next('business-equity') : onComplete());
-    case 'business-equity': return question("Roughly what's your business worth if you sold it today?", undefined, <DollarAnswer value={form.businessEquityValue} onChange={(businessEquityValue) => onChange({ businessEquityValue })} />, onComplete, true, 'Continue to liabilities →');
+    case 'business-equity': return question("Roughly what's your business worth if you sold it today?", undefined, <DollarAnswer value={form.businessEquityValue} onChange={(businessEquityValue) => onChange({ businessEquityValue })} />, onComplete, true, mode === 'edit' ? 'Save and return to Review →' : 'Continue to liabilities →');
   }
 }
 
